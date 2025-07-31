@@ -53,11 +53,13 @@ const settingsArea = document.getElementById('settingsArea');
 const settingsBackBtn = document.getElementById('settingsBackBtn');
 const logoutBtn = document.getElementById('logoutBtn');
 
-// Элементы настроек профиля
+// Элементы настроек профиля (обновленные)
+const profileSettingsUsername = document.getElementById('profileSettingsUsername');
 const profileSettingsDisplayName = document.getElementById('profileSettingsDisplayName');
 const profileSettingsDescription = document.getElementById('profileSettingsDescription');
 const saveProfileSettingsBtn = document.getElementById('saveProfileSettingsBtn');
 const profileSettingsError = document.getElementById('profileSettingsError');
+const descriptionCount = document.getElementById('descriptionCount');
 
 // Новые элементы для смены пароля
 const passwordChangeModal = document.getElementById('passwordChangeModal');
@@ -78,6 +80,7 @@ document.addEventListener('DOMContentLoaded', () => {
     console.log('🚀 Загрузка приложения...');
     checkExistingSession();
     initializeAvatarUpload();
+    initializeCharacterCounters();
 });
 
 // Функция проверки существующей сессии
@@ -97,6 +100,33 @@ async function checkExistingSession() {
     } catch (error) {
         console.error('❌ Ошибка проверки сессии:', error);
         authScreen.style.display = 'flex';
+    }
+}
+
+// Инициализация счетчиков символов
+function initializeCharacterCounters() {
+    if (profileSettingsDescription && descriptionCount) {
+        profileSettingsDescription.addEventListener('input', updateCharacterCount);
+    }
+}
+
+// Обновление счетчика символов для описания
+function updateCharacterCount() {
+    const maxLength = 500;
+    const currentLength = profileSettingsDescription.value.length;
+
+    descriptionCount.textContent = currentLength;
+
+    const counterElement = descriptionCount.parentElement;
+
+    if (currentLength > maxLength * 0.9) {
+        counterElement.classList.add('danger');
+        counterElement.classList.remove('warning');
+    } else if (currentLength > maxLength * 0.7) {
+        counterElement.classList.add('warning');
+        counterElement.classList.remove('danger');
+    } else {
+        counterElement.classList.remove('warning', 'danger');
     }
 }
 
@@ -226,6 +256,18 @@ async function handleAvatarUpload(event) {
     }
 }
 
+// Функция для восстановления предыдущей аватарки
+function restorePreviousAvatar() {
+    if (currentUser.avatar) {
+        avatarPreview.src = currentUser.avatar;
+        avatarPreview.classList.remove('default');
+    } else {
+        avatarPreview.src = '';
+        avatarPreview.classList.add('default');
+        avatarPreview.innerHTML = currentUser.username.charAt(0).toUpperCase();
+    }
+}
+
 // Функция для обновления аватарок везде
 function updateAvatarsEverywhere() {
     // Обновляем превью в настройках
@@ -245,6 +287,7 @@ function updateAvatarsEverywhere() {
     // Уведомляем сервер об обновлении аватарки
     if (socket && isConnected) {
         socket.emit('avatar-updated', {
+            userId: currentUser.userId,
             username: currentUser.username,
             avatar: currentUser.avatar
         });
@@ -331,7 +374,29 @@ function hideError(errorElement = authError) {
 
 // Функция для нормализации username
 function normalizeUsername(username) {
-    return username.startsWith('@') ? username : `@${username}`;
+    return username.startsWith('@') ? username.substring(1) : username;
+}
+
+// Функция для валидации username
+function validateUsername(username) {
+    const normalized = normalizeUsername(username);
+
+    // Проверяем длину
+    if (normalized.length < 3 || normalized.length > 50) {
+        return { valid: false, message: 'Имя пользователя должно содержать от 3 до 50 символов' };
+    }
+
+    // Проверяем допустимые символы (буквы, цифры, подчеркивания)
+    if (!/^[a-zA-Z0-9_]+$/.test(normalized)) {
+        return { valid: false, message: 'Имя пользователя может содержать только буквы, цифры и подчеркивания' };
+    }
+
+    // Проверяем, что не начинается с цифры
+    if (/^[0-9]/.test(normalized)) {
+        return { valid: false, message: 'Имя пользователя не может начинаться с цифры' };
+    }
+
+    return { valid: true };
 }
 
 // Функция для создания подключения
@@ -377,7 +442,10 @@ function setupSocketHandlers() {
             console.log('🔄 Восстанавливаем состояние пользователя...');
 
             // Уведомляем сервер что мы онлайн
-            socket.emit('user-online', currentUser.username);
+            socket.emit('user-online', {
+                userId: currentUser.userId,
+                username: currentUser.username
+            });
 
             // Перезагружаем чаты
             loadUserChats().then(() => {
@@ -494,16 +562,17 @@ function setupSocketHandlers() {
     });
 
     socket.on('new-chat-notification', (data) => {
-        const { from, chatId, message } = data;
+        const { fromUserId, from, chatId, message } = data;
 
         if (!activeChats.has(chatId)) {
             const newChat = {
+                userId: fromUserId,
                 username: from,
                 chatId: chatId,
                 lastMessage: {
                     text: message.message,
                     timestamp: message.timestamp,
-                    from: message.from
+                    fromUserId: message.fromUserId
                 },
                 isOnline: true,
                 lastSeenText: 'В сети'
@@ -512,7 +581,7 @@ function setupSocketHandlers() {
 
             updateChatUserInfo(from, chatId);
             displayChatsList();
-            subscribeToUserStatus(from);
+            subscribeToUserStatus(fromUserId);
         }
     });
 
@@ -523,17 +592,17 @@ function setupSocketHandlers() {
 
     // Обработка обновления профиля пользователя
     socket.on('user-profile-updated', (data) => {
-        const { username, profile } = data;
-        console.log('📝 Получено обновление профиля:', { username, profile });
+        const { userId, username, oldUsername, profile } = data;
+        console.log('📝 Получено обновление профиля:', { userId, username, oldUsername, profile });
 
         // Обновляем информацию о пользователе в чатах
-        updateUserProfileInChats(username, profile);
+        updateUserProfileInChats(username, profile, oldUsername);
     });
 
     // Обработка обновления аватарки
     socket.on('user-avatar-updated', (data) => {
-        const { username, avatar } = data;
-        console.log('🖼️ Получено обновление аватарки:', { username, avatar });
+        const { userId, username, avatar } = data;
+        console.log('🖼️ Получено обновление аватарки:', { userId, username, avatar });
 
         // Обновляем аватарку в чатах
         updateUserAvatarInChats(username, avatar);
@@ -683,17 +752,19 @@ function updateChatAvatarStatus(isOnline) {
 function subscribeToUserStatuses() {
     if (!socket || !isConnected || activeChats.size === 0) return;
 
-    const usernames = Array.from(activeChats.values()).map(chat => chat.username);
-    console.log('📡 Подписываемся на статусы пользователей:', usernames);
+    const userIds = Array.from(activeChats.values()).map(chat => chat.userId).filter(id => id);
+    console.log('📡 Подписываемся на статусы пользователей:', userIds);
 
-    socket.emit('subscribe-to-statuses', usernames);
+    if (userIds.length > 0) {
+        socket.emit('subscribe-to-statuses', userIds);
+    }
 }
 
-function subscribeToUserStatus(username) {
-    if (!socket || !isConnected) return;
+function subscribeToUserStatus(userId) {
+    if (!socket || !isConnected || !userId) return;
 
-    console.log('📡 Подписываемся на статус пользователя:', username);
-    socket.emit('subscribe-to-status', username);
+    console.log('📡 Подписываемся на статус пользователя:', userId);
+    socket.emit('subscribe-to-status', userId);
 }
 
 function startPing() {
@@ -736,9 +807,9 @@ function stopStatusUpdates() {
 }
 
 async function updateAllUserStatuses() {
-    const usernames = Array.from(activeChats.values()).map(chat => chat.username);
+    const userIds = Array.from(activeChats.values()).map(chat => chat.userId).filter(id => id);
 
-    if (usernames.length === 0) return;
+    if (userIds.length === 0) return;
 
     try {
         const response = await fetch('/users-status', {
@@ -746,7 +817,7 @@ async function updateAllUserStatuses() {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ usernames })
+            body: JSON.stringify({ userIds })
         });
 
         const data = await response.json();
@@ -858,6 +929,15 @@ authBtn.addEventListener('click', async () => {
         return;
     }
 
+    // Валидация username при регистрации
+    if (!isLoginMode) {
+        const validation = validateUsername(username);
+        if (!validation.valid) {
+            showError(validation.message);
+            return;
+        }
+    }
+
     const endpoint = isLoginMode ? '/login' : '/register';
     const body = isLoginMode ? 
         { username, password } : 
@@ -928,7 +1008,7 @@ function initializeApp() {
 // Загрузка чатов пользователя
 async function loadUserChats() {
     try {
-        const response = await fetch(`/user-chats/${currentUser.username}`);
+        const response = await fetch(`/user-chats/${currentUser.userId}`);
         const data = await response.json();
 
         if (data.success) {
@@ -964,6 +1044,7 @@ async function updateChatUserInfo(username, chatId) {
             chat.avatar = data.profile.avatar;
             chat.isOnline = data.profile.isOnline;
             chat.lastSeenText = data.profile.lastSeenText;
+            chat.userId = data.profile.userId;
             activeChats.set(chatId, chat);
             displayChatsList();
         }
@@ -973,19 +1054,23 @@ async function updateChatUserInfo(username, chatId) {
 }
 
 // Функция для обновления профиля пользователя в чатах
-function updateUserProfileInChats(username, profile) {
-    console.log('🔄 Обновляем профиль пользователя в чатах:', { username, profile });
+function updateUserProfileInChats(username, profile, oldUsername = null) {
+    console.log('🔄 Обновляем профиль пользователя в чатах:', { username, oldUsername, profile });
 
     // Обновляем данные профиля в activeChats
     for (const [chatId, chat] of activeChats) {
-        if (chat.username === username) {
+        // Проверяем как по старому, так и по новому username
+        if (chat.username === username || (oldUsername && chat.username === oldUsername)) {
+            chat.username = username; // Обновляем username если он изменился
             chat.displayName = profile.displayName;
             chat.description = profile.description;
             chat.avatar = profile.avatar;
+            chat.userId = profile.userId;
             activeChats.set(chatId, chat);
 
             // Если это текущий чат, обновляем заголовок
-            if (currentChat === username) {
+            if (currentChat === (oldUsername || username)) {
+                currentChat = username; // Обновляем текущий чат
                 const statusText = chat.lastSeenText || (chat.isOnline ? 'В сети' : 'Был(а) в сети давно');
                 updateChatAvatar(username, profile.avatar);
                 updateChatAvatarStatus(chat.isOnline);
@@ -1025,7 +1110,7 @@ function displayChatsList() {
         const displayName = chat.displayName || chat.username;
         const lastMessageText = chat.lastMessage ? 
             `<div class="last-message">
-                ${chat.lastMessage.from === currentUser.username ? 'Вы: ' : ''}${chat.lastMessage.text}
+                ${chat.lastMessage.fromUserId === currentUser.userId ? 'Вы: ' : ''}${chat.lastMessage.text}
             </div>` : '';
 
         const avatarHtml = getUserAvatar(chat.username, chat.avatar);
@@ -1062,9 +1147,18 @@ function displayChatsList() {
 function isMessageForCurrentChat(messageData) {
     if (!currentChat || !currentChatId) return false;
 
-    const expectedChatId = getChatId(currentUser.username, currentChat);
+    const expectedChatId = getChatId(currentUser.userId, getCurrentChatUserId());
     return currentChatId === expectedChatId && 
-           (messageData.from === currentChat || messageData.from === currentUser.username);
+           (messageData.fromUserId === getCurrentChatUserId() || messageData.fromUserId === currentUser.userId);
+}
+
+function getCurrentChatUserId() {
+    for (const [chatId, chat] of activeChats) {
+        if (chat.username === currentChat) {
+            return chat.userId;
+        }
+    }
+    return null;
 }
 
 let searchTimeout;
@@ -1120,15 +1214,15 @@ function displaySearchResults(users) {
         `;
 
         chatItem.addEventListener('click', () => {
-            openChat(user.username, user.displayName);
+            openChat(user.username, user.displayName, user.userId);
         });
 
         chatsList.appendChild(chatItem);
     });
 }
 
-function openChat(username, displayName) {
-    const chatId = getChatId(currentUser.username, username);
+function openChat(username, displayName, userId) {
+    const chatId = getChatId(currentUser.userId, userId);
     openChatById(chatId, username, displayName);
 }
 
@@ -1193,7 +1287,7 @@ function openChatById(chatId, username, displayName) {
                 `;
 
                 updateUserStatus(username, newIsOnline, newStatusText);
-                subscribeToUserStatus(username);
+                subscribeToUserStatus(data.profile.userId);
             }
         })
         .catch(error => {
@@ -1229,8 +1323,8 @@ function openChatById(chatId, username, displayName) {
     displayChatsList();
 }
 
-function getChatId(user1, user2) {
-    return [user1, user2].sort().join('_');
+function getChatId(userId1, userId2) {
+    return [userId1, userId2].sort((a, b) => a - b).join('_');
 }
 
 sendBtn.addEventListener('click', sendMessage);
@@ -1256,12 +1350,18 @@ function sendMessage() {
         return;
     }
 
+    const toUserId = getCurrentChatUserId();
+    if (!toUserId) {
+        console.log('⚠️ Не найден userId собеседника');
+        return;
+    }
+
     console.log('📤 Отправляем сообщение через socket');
     socket.emit('send-message', {
         chatId: currentChatId,
         message,
-        from: currentUser.username,
-        to: currentChat
+        fromUserId: currentUser.userId,
+        toUserId: toUserId
     });
 
     messageInput.value = '';
@@ -1316,7 +1416,7 @@ function displayMessage(messageData) {
     }
 
     const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${messageData.from === currentUser.username ? 'own' : ''}`;
+    messageDiv.className = `message ${messageData.fromUserId === currentUser.userId ? 'own' : ''}`;
 
     const formattedTime = formatLocalTime(messageData.timestamp);
 
@@ -1517,8 +1617,13 @@ function checkFileAPISupport() {
 async function showProfileSettings() {
     console.log('👤 Открываем настройки профиля');
 
+    // Заполняем поля текущими данными
+    profileSettingsUsername.value = currentUser.username;
     profileSettingsDisplayName.value = currentUser.displayName;
     profileSettingsDescription.value = currentUser.description || '';
+
+    // Обновляем счетчик символов
+    updateCharacterCount();
 
     // Устанавливаем превью аватарки
     if (currentUser.avatar) {
@@ -1600,12 +1705,27 @@ changePasswordBtn.addEventListener('click', async () => {
     }
 });
 
+// Обновленный обработчик сохранения настроек профиля
 saveProfileSettingsBtn.addEventListener('click', async () => {
+    const username = profileSettingsUsername.value.trim();
     const displayName = profileSettingsDisplayName.value.trim();
     const description = profileSettingsDescription.value.trim();
 
-    if (!displayName) {
-        showError('Имя обязательно', profileSettingsError);
+    if (!username || !displayName) {
+        showError('Имя пользователя и отображаемое имя обязательны', profileSettingsError);
+        return;
+    }
+
+    // Валидация username
+    const validation = validateUsername(username);
+    if (!validation.valid) {
+        showError(validation.message, profileSettingsError);
+        return;
+    }
+
+    // Проверяем ограничение по длине описания
+    if (description.length > 500) {
+        showError('Описание не может быть длиннее 500 символов', profileSettingsError);
         return;
     }
 
@@ -1616,6 +1736,7 @@ saveProfileSettingsBtn.addEventListener('click', async () => {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
+                username,
                 displayName,
                 description
             })
@@ -1624,6 +1745,7 @@ saveProfileSettingsBtn.addEventListener('click', async () => {
         const data = await response.json();
 
         if (data.success) {
+            const oldUsername = currentUser.username;
             currentUser = data.user;
             currentUserSpan.textContent = currentUser.displayName;
 
@@ -1635,10 +1757,20 @@ saveProfileSettingsBtn.addEventListener('click', async () => {
             // Уведомляем сервер об обновлении профиля
             if (socket && isConnected) {
                 socket.emit('profile-updated', {
+                    userId: currentUser.userId,
                     username: currentUser.username,
+                    oldUsername: oldUsername !== currentUser.username ? oldUsername : null,
                     profile: currentUser
                 });
             }
+
+            // Если username изменился, обновляем текущий чат
+            if (oldUsername !== currentUser.username && currentChat === oldUsername) {
+                currentChat = currentUser.username;
+            }
+
+            // Перезагружаем чаты для обновления отображения
+            loadUserChats();
         } else {
             showError(data.message, profileSettingsError);
         }
@@ -1717,6 +1849,19 @@ newPassword.addEventListener('keypress', (e) => {
 confirmPassword.addEventListener('keypress', (e) => {
     if (e.key === 'Enter') {
         changePasswordBtn.click();
+    }
+});
+
+// Обработка Enter в полях настроек профиля
+profileSettingsUsername.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        profileSettingsDisplayName.focus();
+    }
+});
+
+profileSettingsDisplayName.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+        profileSettingsDescription.focus();
     }
 });
 
@@ -2040,7 +2185,10 @@ function handleSocketConnect() {
         connectionLostTime = null;
 
         if (currentUser) {
-            socket.emit('user-online', currentUser.username);
+            socket.emit('user-online', {
+                userId: currentUser.userId,
+                username: currentUser.username
+            });
             subscribeToUserStatuses();
 
             setTimeout(() => {
@@ -2054,3 +2202,36 @@ function handleSocketConnect() {
         }
     }
 }
+
+// Валидация полей в реальном времени
+profileSettingsUsername.addEventListener('input', (e) => {
+    const username = e.target.value.trim();
+    const validation = validateUsername(username);
+
+    if (username && !validation.valid) {
+        e.target.style.borderColor = '#ff3b30';
+        showError(validation.message, profileSettingsError);
+    } else {
+        e.target.style.borderColor = '';
+        if (username) {
+            hideError(profileSettingsError);
+        }
+    }
+});
+
+// Добавляем автоматическое форматирование username (добавляем @ если нужно)
+profileSettingsUsername.addEventListener('blur', (e) => {
+    let value = e.target.value.trim();
+    if (value && !value.startsWith('@')) {
+        e.target.value = '@' + value;
+    }
+});
+
+profileSettingsUsername.addEventListener('focus', (e) => {
+    let value = e.target.value.trim();
+    if (value.startsWith('@')) {
+        e.target.value = value.substring(1);
+    }
+});
+
+console.log('✅ Клиентский скрипт полностью загружен');
