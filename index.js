@@ -521,10 +521,11 @@ async function removeSession(ip) {
     }
 }
 
-// Функция для получения ключа шифрования чата
+// ИСПРАВЛЕННАЯ функция для получения ключа шифрования чата
 async function getChatEncryptionKey(chatId) {
     // Проверяем кеш
     if (chatKeys.has(chatId)) {
+        console.log(`🔑 Ключ шифрования найден в кеше для чата: ${chatId}`);
         return chatKeys.get(chatId);
     }
 
@@ -534,6 +535,7 @@ async function getChatEncryptionKey(chatId) {
         if (result.rows.length > 0 && result.rows[0].encryption_key) {
             const key = result.rows[0].encryption_key;
             chatKeys.set(chatId, key); // Кешируем ключ
+            console.log(`🔑 Ключ шифрования найден в БД для чата: ${chatId}`);
             return key;
         }
 
@@ -1249,7 +1251,7 @@ app.post('/update-profile', async (req, res) => {
     }
 });
 
-// Обновленная функция создания защищенного чата с использованием user_id
+// ИСПРАВЛЕННАЯ функция создания защищенного чата с использованием user_id
 async function ensureChatExists(userId1, userId2) {
     const chatId = createChatId(userId1, userId2);
 
@@ -1263,11 +1265,11 @@ async function ensureChatExists(userId1, userId2) {
         if (existingChat.rows.length > 0 && existingChat.rows[0].encryption_key) {
             // Кешируем ключ шифрования
             chatKeys.set(chatId, existingChat.rows[0].encryption_key);
-            console.log(`✅ Найден существующий чат: ${chatId}`);
+            console.log(`✅ Найден существующий чат: ${chatId} с ключом шифрования`);
             return chatId;
         }
 
-        // Проверяем, не существует ли чат между этими пользователями
+        // Проверяем, не существует ли чат между этими пользователями с другим ID
         const possibleChats = await pool.query(
             'SELECT chat_id, encryption_key FROM chats WHERE (user1_id = $1 AND user2_id = $2) OR (user1_id = $2 AND user2_id = $1)', 
             [userId1, userId2]
@@ -1305,11 +1307,15 @@ async function ensureChatExists(userId1, userId2) {
                         chatKeys.set(chatId, existingChat.encryption_key);
                     }
 
-                    console.log(`✅ ID чата обновлен: ${existingChat.chat_id} -> ${chatId}`);
+                    console.log(`✅ ID чата обновлен: ${existingChat.chat_id} -> ${chatId} с ключом шифрования`);
                 } catch (error) {
                     await pool.query('ROLLBACK');
                     console.error('❌ Ошибка обновления ID чата:', error);
                 }
+            } else {
+                // Чат уже существует с правильным ID, кешируем ключ
+                chatKeys.set(chatId, existingChat.encryption_key);
+                console.log(`✅ Чат ${chatId} уже существует с ключом шифрования`);
             }
 
             return chatId;
@@ -1323,7 +1329,7 @@ async function ensureChatExists(userId1, userId2) {
             [chatId, userId1, userId2, encryptionKey]
         );
 
-        console.log(`🔐 Создан новый чат: ${chatId} между user_id ${userId1} и ${userId2}`);
+        console.log(`🔐 Создан новый чат: ${chatId} между user_id ${userId1} и ${userId2} с ключом шифрования`);
 
         // Кешируем ключ шифрования
         chatKeys.set(chatId, encryptionKey);
@@ -1407,420 +1413,440 @@ async function cleanupInactiveConnections() {
 
 setInterval(cleanupInactiveConnections, 60000);
 
-// Периодическая очистка истекших сессий
 setInterval(async () => {
-    try {
-        const result = await pool.query('DELETE FROM user_sessions WHERE expires_at < CURRENT_TIMESTAMP RETURNING user_id, ip');
+   try {
+       const result = await pool.query('DELETE FROM user_sessions WHERE expires_at < CURRENT_TIMESTAMP RETURNING user_id, ip');
 
-        if (result.rows.length > 0) {
-            console.log(`🧹 Очищено ${result.rows.length} истекших сессий`);
-            result.rows.forEach(session => {
-                console.log(`🗑️ Удалена истекшая сессия для user_id ${session.user_id} (IP: ${session.ip})`);
-            });
-        }
-    } catch (error) {
-        console.error('❌ Ошибка очистки истекших сессий:', error);
-    }
+       if (result.rows.length > 0) {
+           console.log(`🧹 Очищено ${result.rows.length} истекших сессий`);
+           result.rows.forEach(session => {
+               console.log(`🗑️ Удалена истекшая сессия для user_id ${session.user_id} (IP: ${session.ip})`);
+           });
+       }
+   } catch (error) {
+       console.error('❌ Ошибка очистки истекших сессий:', error);
+   }
 }, 60 * 60 * 1000);
 
 // ==================== SOCKET.IO ОБРАБОТЧИКИ ====================
 
 io.on('connection', (socket) => {
-    const clientIP = getClientIP(socket.handshake);
-    console.log(`🟢 Подключение: ${socket.id} (IP: ${clientIP})`);
+   const clientIP = getClientIP(socket.handshake);
+   console.log(`🟢 Подключение: ${socket.id} (IP: ${clientIP})`);
 
-    socket.emit('connection-confirmed', { 
-        connectionType: 'new',
-        socketId: socket.id 
-    });
+   socket.emit('connection-confirmed', { 
+       connectionType: 'new',
+       socketId: socket.id 
+   });
 
-    socket.on('user-online', async (userData) => {
-        const { userId, username } = userData;
+   socket.on('user-online', async (userData) => {
+       const { userId, username } = userData;
 
-        const existingSocket = userSockets.get(userId);
-        if (existingSocket && existingSocket.socketId !== socket.id) {
-            const oldSocket = io.sockets.sockets.get(existingSocket.socketId);
-            if (oldSocket) {
-                console.log(`🔄 Отключаем старое соединение для user_id ${userId}: ${existingSocket.socketId}`);
-                oldSocket.disconnect(true);
-            }
-            connectedSockets.delete(existingSocket.socketId);
-        }
+       const existingSocket = userSockets.get(userId);
+       if (existingSocket && existingSocket.socketId !== socket.id) {
+           const oldSocket = io.sockets.sockets.get(existingSocket.socketId);
+           if (oldSocket) {
+               console.log(`🔄 Отключаем старое соединение для user_id ${userId}: ${existingSocket.socketId}`);
+               oldSocket.disconnect(true);
+           }
+           connectedSockets.delete(existingSocket.socketId);
+       }
 
-        const existingData = onlineUsersByIP.get(clientIP);
-        if (existingData) {
-            existingData.userId = userId;
-            existingData.username = username;
-            existingData.socketId = socket.id;
-            existingData.lastActivity = Date.now();
-        } else {
-            onlineUsersByIP.set(clientIP, {
-                userId,
-                username,
-                socketId: socket.id,
-                lastActivity: Date.now()
-            });
-        }
+       const existingData = onlineUsersByIP.get(clientIP);
+       if (existingData) {
+           existingData.userId = userId;
+           existingData.username = username;
+           existingData.socketId = socket.id;
+           existingData.lastActivity = Date.now();
+       } else {
+           onlineUsersByIP.set(clientIP, {
+               userId,
+               username,
+               socketId: socket.id,
+               lastActivity: Date.now()
+           });
+       }
 
-        userSockets.set(userId, { socketId: socket.id, ip: clientIP });
-        connectedSockets.set(socket.id, { 
-            userId,
-            username, 
-            ip: clientIP, 
-            lastPing: Date.now() 
-        });
+       userSockets.set(userId, { socketId: socket.id, ip: clientIP });
+       connectedSockets.set(socket.id, { 
+           userId,
+           username, 
+           ip: clientIP, 
+           lastPing: Date.now() 
+       });
 
-        console.log(`✅ Пользователь ${username} (user_id: ${userId}) онлайн с соединением (${socket.id}, IP: ${clientIP})`);
+       console.log(`✅ Пользователь ${username} (user_id: ${userId}) онлайн с соединением (${socket.id}, IP: ${clientIP})`);
 
-        if (existingSocket) {
-            socket.emit('connection-confirmed', { 
-                connectionType: 'reconnected',
-                socketId: socket.id 
-            });
-        }
+       if (existingSocket) {
+           socket.emit('connection-confirmed', { 
+               connectionType: 'reconnected',
+               socketId: socket.id 
+           });
+       }
 
-        io.emit('user-status-changed', { 
-            userId,
-            username, 
-            isOnline: true,
-            lastSeenText: 'В сети'
-        });
-    });
+       io.emit('user-status-changed', { 
+           userId,
+           username, 
+           isOnline: true,
+           lastSeenText: 'В сети'
+       });
+   });
 
-    socket.on('user-active', async () => {
-        const userData = onlineUsersByIP.get(clientIP);
-        if (userData) {
-            userData.lastActivity = Date.now();
+   socket.on('user-active', async () => {
+       const userData = onlineUsersByIP.get(clientIP);
+       if (userData) {
+           userData.lastActivity = Date.now();
 
-            const socketData = connectedSockets.get(socket.id);
-            if (socketData) {
-                socketData.lastPing = Date.now();
-            }
+           const socketData = connectedSockets.get(socket.id);
+           if (socketData) {
+               socketData.lastPing = Date.now();
+           }
 
-            io.emit('user-status-changed', { 
-                userId: userData.userId,
-                username: userData.username, 
-                isOnline: true,
-                lastSeenText: 'В сети'
-            });
-        }
-    });
+           io.emit('user-status-changed', { 
+               userId: userData.userId,
+               username: userData.username, 
+               isOnline: true,
+               lastSeenText: 'В сети'
+           });
+       }
+   });
 
-    socket.on('user-inactive', () => {
-        const userData = onlineUsersByIP.get(clientIP);
-        if (userData) {
-            console.log(`😴 Пользователь неактивен: ${userData.username} (user_id: ${userData.userId}, ${clientIP})`);
-        }
-    });
+   socket.on('user-inactive', () => {
+       const userData = onlineUsersByIP.get(clientIP);
+       if (userData) {
+           console.log(`😴 Пользователь неактивен: ${userData.username} (user_id: ${userData.userId}, ${clientIP})`);
+       }
+   });
 
-    socket.on('user-offline', async () => {
-        const userId = await disconnectUserByIP(clientIP, 'user_request');
-        if (userId) {
-            const status = await getUserStatus(userId);
-            // Получаем username для уведомления
-            const userResult = await pool.query('SELECT username FROM users WHERE user_id = $1', [userId]);
-            const username = userResult.rows.length > 0 ? userResult.rows[0].username : null;
+   socket.on('user-offline', async () => {
+       const userId = await disconnectUserByIP(clientIP, 'user_request');
+       if (userId) {
+           const status = await getUserStatus(userId);
+           // Получаем username для уведомления
+           const userResult = await pool.query('SELECT username FROM users WHERE user_id = $1', [userId]);
+           const username = userResult.rows.length > 0 ? userResult.rows[0].username : null;
 
-            io.emit('user-status-changed', { 
-                userId,
-                username,
-                isOnline: false,
-                lastSeenText: status.lastSeenText 
-            });
-        }
-    });
+           io.emit('user-status-changed', { 
+               userId,
+               username,
+               isOnline: false,
+               lastSeenText: status.lastSeenText 
+           });
+       }
+   });
 
-    socket.on('subscribe-to-statuses', async (userIds) => {
-        console.log(`📡 Подписка на статусы: ${userIds.join(', ')}`);
+   socket.on('subscribe-to-statuses', async (userIds) => {
+       console.log(`📡 Подписка на статусы: ${userIds.join(', ')}`);
 
-        const statuses = [];
-        for (const userId of userIds) {
-            const status = await getUserStatus(userId);
-            const userResult = await pool.query('SELECT username FROM users WHERE user_id = $1', [userId]);
-            const username = userResult.rows.length > 0 ? userResult.rows[0].username : null;
+       const statuses = [];
+       for (const userId of userIds) {
+           const status = await getUserStatus(userId);
+           const userResult = await pool.query('SELECT username FROM users WHERE user_id = $1', [userId]);
+           const username = userResult.rows.length > 0 ? userResult.rows[0].username : null;
 
-            statuses.push({
-                userId: userId,
-                username: username,
-                isOnline: status.isOnline,
-                lastSeenText: status.lastSeenText
-            });
-        }
+           statuses.push({
+               userId: userId,
+               username: username,
+               isOnline: status.isOnline,
+               lastSeenText: status.lastSeenText
+           });
+       }
 
-        socket.emit('users-status-update', { users: statuses });
-    });
+       socket.emit('users-status-update', { users: statuses });
+   });
 
-    socket.on('subscribe-to-status', async (userId) => {
-        console.log(`📡 Подписка на статус: user_id ${userId}`);
+   socket.on('subscribe-to-status', async (userId) => {
+       console.log(`📡 Подписка на статус: user_id ${userId}`);
 
-        const status = await getUserStatus(userId);
-        const userResult = await pool.query('SELECT username FROM users WHERE user_id = $1', [userId]);
-        const username = userResult.rows.length > 0 ? userResult.rows[0].username : null;
+       const status = await getUserStatus(userId);
+       const userResult = await pool.query('SELECT username FROM users WHERE user_id = $1', [userId]);
+       const username = userResult.rows.length > 0 ? userResult.rows[0].username : null;
 
-        socket.emit('user-status-changed', {
-            userId: userId,
-            username: username,
-            isOnline: status.isOnline,
-            lastSeenText: status.lastSeenText
-        });
-    });
+       socket.emit('user-status-changed', {
+           userId: userId,
+           username: username,
+           isOnline: status.isOnline,
+           lastSeenText: status.lastSeenText
+       });
+   });
 
-    socket.on('profile-updated', (data) => {
-        const { userId, username, oldUsername, profile } = data;
-        console.log(`📝 Получено уведомление об обновлении профиля от user_id ${userId} (${username}):`, profile);
+   socket.on('profile-updated', (data) => {
+       const { userId, username, oldUsername, profile } = data;
+       console.log(`📝 Получено уведомление об обновлении профиля от user_id ${userId} (${username}):`, profile);
 
-        socket.broadcast.emit('user-profile-updated', {
-            userId,
-            username,
-            oldUsername,
-            profile
-        });
-    });
+       socket.broadcast.emit('user-profile-updated', {
+           userId,
+           username,
+           oldUsername,
+           profile
+       });
+   });
 
-    socket.on('avatar-updated', (data) => {
-        const { userId, username, avatar } = data;
-        console.log(`🖼️ Получено уведомление об обновлении аватарки от user_id ${userId} (${username}):`, avatar);
+   socket.on('avatar-updated', (data) => {
+       const { userId, username, avatar } = data;
+       console.log(`🖼️ Получено уведомление об обновлении аватарки от user_id ${userId} (${username}):`, avatar);
 
-        socket.broadcast.emit('user-avatar-updated', {
-            userId,
-            username,
-            avatar
-        });
-    });
+       socket.broadcast.emit('user-avatar-updated', {
+           userId,
+           username,
+           avatar
+       });
+   });
 
-    socket.on('join-chat', async (chatId) => {
-        socket.join(chatId);
+   socket.on('join-chat', async (chatId) => {
+       socket.join(chatId);
 
-        const userData = onlineUsersByIP.get(clientIP);
-        if (userData) {
-            userData.lastActivity = Date.now();
-        }
+       const userData = onlineUsersByIP.get(clientIP);
+       if (userData) {
+           userData.lastActivity = Date.now();
+       }
 
-        const socketData = connectedSockets.get(socket.id);
-        if (socketData) {
-            socketData.lastPing = Date.now();
-        }
+       const socketData = connectedSockets.get(socket.id);
+       if (socketData) {
+           socketData.lastPing = Date.now();
+       }
 
-        console.log(`💬 Пользователь присоединился к чату: ${chatId}`);
+       console.log(`💬 Пользователь присоединился к чату: ${chatId}`);
 
-        try {
-            // Получаем ключ шифрования для чата
-            const encryptionKey = await getChatEncryptionKey(chatId);
+       try {
+           // Получаем ключ шифрования для чата
+           let encryptionKey = await getChatEncryptionKey(chatId);
 
-            if (!encryptionKey) {
-                console.error(`❌ Не найден ключ шифрования для чата: ${chatId}`);
-                socket.emit('chat-history', []);
-                return;
-            }
+           if (!encryptionKey) {
+               console.error(`❌ Не найден ключ шифрования для чата: ${chatId}`);
 
-            // Получаем зашифрованную историю сообщений с информацией о пользователях
-            const result = await pool.query(`
-                SELECT m.from_user_id, m.encrypted_message, m.timestamp, u.username 
-                FROM messages m
-                JOIN users u ON m.from_user_id = u.user_id
-                WHERE m.chat_id = $1 
-                ORDER BY m.timestamp ASC
-            `, [chatId]);
+               // ИСПРАВЛЕНИЕ: Пытаемся создать чат если ключ не найден
+               const chatParts = chatId.split('_');
+               if (chatParts.length === 2) {
+                   const userId1 = parseInt(chatParts[0]);
+                   const userId2 = parseInt(chatParts[1]);
 
-            // Расшифровываем сообщения перед отправкой клиенту
-            const chatMessages = result.rows.map(row => {
-                const decryptedMessage = decryptMessage(row.encrypted_message, encryptionKey);
-                return {
-                    fromUserId: row.from_user_id,
-                    from: row.username,
-                    message: decryptedMessage,
-                    timestamp: row.timestamp
-                };
-            });
+                   if (!isNaN(userId1) && !isNaN(userId2)) {
+                       console.log(`🔧 Попытка создать отсутствующий чат: ${chatId}`);
+                       await ensureChatExists(userId1, userId2);
 
-            socket.emit('chat-history', chatMessages);
-            console.log(`🔓 Отправлена расшифрованная история чата ${chatId} (${chatMessages.length} сообщений)`);
-        } catch (error) {
-            console.error('❌ Ошибка получения защищенной истории чата:', error);
-            socket.emit('chat-history', []);
-        }
-    });
+                       // Повторно пытаемся получить ключ
+                       encryptionKey = await getChatEncryptionKey(chatId);
+                       if (encryptionKey) {
+                           console.log(`✅ Ключ шифрования создан для чата: ${chatId}`);
+                       }
+                   }
+               }
 
-    socket.on('send-message', async (data) => {
-        const { chatId, message, fromUserId, toUserId } = data;
+               if (!encryptionKey) {
+                   socket.emit('chat-history', []);
+                   return;
+               }
+           }
 
-        updateUserActivity(fromUserId, socket.id, clientIP);
+           // Получаем зашифрованную историю сообщений с информацией о пользователях
+           const result = await pool.query(`
+               SELECT m.from_user_id, m.encrypted_message, m.timestamp, u.username 
+               FROM messages m
+               JOIN users u ON m.from_user_id = u.user_id
+               WHERE m.chat_id = $1 
+               ORDER BY m.timestamp ASC
+           `, [chatId]);
 
-        // Получаем username отправителя для уведомлений
-        const fromUserResult = await pool.query('SELECT username FROM users WHERE user_id = $1', [fromUserId]);
-        const fromUsername = fromUserResult.rows.length > 0 ? fromUserResult.rows[0].username : null;
+           // Расшифровываем сообщения перед отправкой клиенту
+           const chatMessages = result.rows.map(row => {
+               const decryptedMessage = decryptMessage(row.encrypted_message, encryptionKey);
+               return {
+                   fromUserId: row.from_user_id,
+                   from: row.username,
+                   message: decryptedMessage,
+                   timestamp: row.timestamp
+               };
+           });
 
-        io.emit('user-status-changed', { 
-            userId: fromUserId,
-            username: fromUsername, 
-            isOnline: true,
-            lastSeenText: 'В сети'
-        });
+           socket.emit('chat-history', chatMessages);
+           console.log(`🔓 Отправлена расшифрованная история чата ${chatId} (${chatMessages.length} сообщений)`);
+       } catch (error) {
+           console.error('❌ Ошибка получения защищенной истории чата:', error);
+           socket.emit('chat-history', []);
+       }
+   });
 
-        const messageData = {
-            fromUserId,
-            from: fromUsername,
-            message,
-            timestamp: new Date().toISOString()
-        };
+   socket.on('send-message', async (data) => {
+       const { chatId, message, fromUserId, toUserId } = data;
 
-        try {
-            // Убеждаемся, что защищенный чат существует
-            await ensureChatExists(fromUserId, toUserId);
+       updateUserActivity(fromUserId, socket.id, clientIP);
 
-            const existingChatForRecipient = await pool.query(
-                'SELECT COUNT(*) as count FROM messages WHERE chat_id = $1 AND from_user_id = $2',
-                [chatId, toUserId]
-            );
+       // Получаем username отправителя для уведомлений
+       const fromUserResult = await pool.query('SELECT username FROM users WHERE user_id = $1', [fromUserId]);
+       const fromUsername = fromUserResult.rows.length > 0 ? fromUserResult.rows[0].username : null;
 
-            const isNewChatForRecipient = parseInt(existingChatForRecipient.rows[0].count) === 0;
+       io.emit('user-status-changed', { 
+           userId: fromUserId,
+           username: fromUsername, 
+           isOnline: true,
+           lastSeenText: 'В сети'
+       });
 
-            // Получаем ключ шифрования для чата
-            const encryptionKey = await getChatEncryptionKey(chatId);
+       const messageData = {
+           fromUserId,
+           from: fromUsername,
+           message,
+           timestamp: new Date().toISOString()
+       };
 
-            if (!encryptionKey) {
-                console.error(`❌ Не найден ключ шифрования для чата: ${chatId}`);
-                socket.emit('message-error', { error: 'Ошибка шифрования сообщения' });
-                return;
-            }
+       try {
+           // Убеждаемся, что защищенный чат существует
+           await ensureChatExists(fromUserId, toUserId);
 
-            // Шифруем сообщение перед сохранением
-            const encryptedMessage = encryptMessage(message, encryptionKey);
+           const existingChatForRecipient = await pool.query(
+               'SELECT COUNT(*) as count FROM messages WHERE chat_id = $1 AND from_user_id = $2',
+               [chatId, toUserId]
+           );
 
-            // Сохраняем зашифрованное сообщение в базу данных
-            await pool.query(
-                'INSERT INTO messages (chat_id, from_user_id, encrypted_message) VALUES ($1, $2, $3)',
-                [chatId, fromUserId, encryptedMessage]
-            );
+           const isNewChatForRecipient = parseInt(existingChatForRecipient.rows[0].count) === 0;
 
-            console.log(`🔐 Сообщение сохранено: user_id ${fromUserId} -> ${toUserId} в чате ${chatId}`);
+           // Получаем ключ шифрования для чата
+           const encryptionKey = await getChatEncryptionKey(chatId);
 
-            // Отправляем расшифрованное сообщение всем в чате
-            io.to(chatId).emit('new-message', messageData);
+           if (!encryptionKey) {
+               console.error(`❌ Не найден ключ шифрования для чата: ${chatId}`);
+               socket.emit('message-error', { error: 'Ошибка шифрования сообщения' });
+               return;
+           }
 
-            if (isNewChatForRecipient) {
-                const recipientSocket = userSockets.get(toUserId);
-                if (recipientSocket) {
-                    const recipientSocketObj = io.sockets.sockets.get(recipientSocket.socketId);
-                    if (recipientSocketObj) {
-                        recipientSocketObj.emit('new-chat-notification', {
-                            fromUserId,
-                            from: fromUsername,
-                            chatId,
-                            message: messageData
-                        });
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('❌ Ошибка отправки зашифрованного сообщения:', error);
-            socket.emit('message-error', { error: 'Не удалось отправить сообщение' });
-        }
-    });
+           // Шифруем сообщение перед сохранением
+           const encryptedMessage = encryptMessage(message, encryptionKey);
 
-    socket.on('ping', async () => {
-        const userData = onlineUsersByIP.get(clientIP);
-        if (userData) {
-            userData.lastActivity = Date.now();
-        }
+           // Сохраняем зашифрованное сообщение в базу данных
+           await pool.query(
+               'INSERT INTO messages (chat_id, from_user_id, encrypted_message) VALUES ($1, $2, $3)',
+               [chatId, fromUserId, encryptedMessage]
+           );
 
-        const socketData = connectedSockets.get(socket.id);
-        if (socketData) {
-            socketData.lastPing = Date.now();
-        }
+           console.log(`🔐 Сообщение сохранено: user_id ${fromUserId} -> ${toUserId} в чате ${chatId}`);
 
-        socket.emit('pong');
-    });
+           // Отправляем расшифрованное сообщение всем в чате
+           io.to(chatId).emit('new-message', messageData);
 
-    socket.on('disconnect', async (reason) => {
-        console.log(`🔴 Отключение соединения: ${socket.id} (IP: ${clientIP}) - ${reason}`);
+           if (isNewChatForRecipient) {
+               const recipientSocket = userSockets.get(toUserId);
+               if (recipientSocket) {
+                   const recipientSocketObj = io.sockets.sockets.get(recipientSocket.socketId);
+                   if (recipientSocketObj) {
+                       recipientSocketObj.emit('new-chat-notification', {
+                           fromUserId,
+                           from: fromUsername,
+                           chatId,
+                           message: messageData
+                       });
+                   }
+               }
+           }
+       } catch (error) {
+           console.error('❌ Ошибка отправки зашифрованного сообщения:', error);
+           socket.emit('message-error', { error: 'Не удалось отправить сообщение' });
+       }
+   });
 
-        connectedSockets.delete(socket.id);
+   socket.on('ping', async () => {
+       const userData = onlineUsersByIP.get(clientIP);
+       if (userData) {
+           userData.lastActivity = Date.now();
+       }
 
-        setTimeout(async () => {
-            const userData = onlineUsersByIP.get(clientIP);
+       const socketData = connectedSockets.get(socket.id);
+       if (socketData) {
+           socketData.lastPing = Date.now();
+       }
 
-            if (userData && userData.socketId === socket.id) {
-                const userId = await disconnectUserByIP(clientIP, `socket_${reason}`);
-                if (userId) {
-                    const status = await getUserStatus(userId);
-                    // Получаем username для уведомления
-                    const userResult = await pool.query('SELECT username FROM users WHERE user_id = $1', [userId]);
-                    const username = userResult.rows.length > 0 ? userResult.rows[0].username : null;
+       socket.emit('pong');
+   });
 
-                    io.emit('user-status-changed', { 
-                        userId,
-                        username,
-                        isOnline: false,
-                        lastSeenText: status.lastSeenText 
-                    });
-                }
-            }
-        }, 5000);
-    });
+   socket.on('disconnect', async (reason) => {
+       console.log(`🔴 Отключение соединения: ${socket.id} (IP: ${clientIP}) - ${reason}`);
 
-    socket.on('error', (error) => {
-        console.log(`❌ Ошибка защищенного соединения ${socket.id}:`, error);
-    });
+       connectedSockets.delete(socket.id);
+
+       setTimeout(async () => {
+           const userData = onlineUsersByIP.get(clientIP);
+
+           if (userData && userData.socketId === socket.id) {
+               const userId = await disconnectUserByIP(clientIP, `socket_${reason}`);
+               if (userId) {
+                   const status = await getUserStatus(userId);
+                   // Получаем username для уведомления
+                   const userResult = await pool.query('SELECT username FROM users WHERE user_id = $1', [userId]);
+                   const username = userResult.rows.length > 0 ? userResult.rows[0].username : null;
+
+                   io.emit('user-status-changed', { 
+                       userId,
+                       username,
+                       isOnline: false,
+                       lastSeenText: status.lastSeenText 
+                   });
+               }
+           }
+       }, 5000);
+   });
+
+   socket.on('error', (error) => {
+       console.log(`❌ Ошибка защищенного соединения ${socket.id}:`, error);
+   });
 });
 
 // ==================== GRACEFUL SHUTDOWN ====================
 
 process.on('SIGTERM', async () => {
-    console.log('🛑 Получен сигнал SIGTERM, начинаем graceful shutdown...');
+   console.log('🛑 Получен сигнал SIGTERM, начинаем graceful shutdown...');
 
-    for (const [ip, userData] of onlineUsersByIP) {
-        try {
-            await pool.query('UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE user_id = $1', [userData.userId]);
-        } catch (error) {
-            console.error('❌ Ошибка обновления last_seen при shutdown:', error);
-        }
-    }
+   for (const [ip, userData] of onlineUsersByIP) {
+       try {
+           await pool.query('UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE user_id = $1', [userData.userId]);
+       } catch (error) {
+           console.error('❌ Ошибка обновления last_seen при shutdown:', error);
+       }
+   }
 
-    io.close(() => {
-        console.log('✅ Сокет сервер закрыт');
+   io.close(() => {
+       console.log('✅ Сокет сервер закрыт');
 
-        server.close(() => {
-            console.log('✅ HTTP сервер закрыт');
+       server.close(() => {
+           console.log('✅ HTTP сервер закрыт');
 
-            pool.end(() => {
-                console.log('✅ Подключение к базе-данных закрыто');
-                process.exit(0);
-            });
-        });
-    });
+           pool.end(() => {
+               console.log('✅ Подключение к базе-данных закрыто');
+               process.exit(0);
+           });
+       });
+   });
 });
 
 process.on('SIGINT', async () => {
-    console.log('🛑 Получен сигнал SIGINT (Ctrl+C)');
-    process.emit('SIGTERM');
+   console.log('🛑 Получен сигнал SIGINT (Ctrl+C)');
+   process.emit('SIGTERM');
 });
 
 // Обработка ошибок без завершения процесса
 process.on('uncaughtException', (error) => {
-    console.error('❌ Необработанное исключение:', error);
-    // НЕ завершаем процесс для устойчивости
+   console.error('❌ Необработанное исключение:', error);
+   // НЕ завершаем процесс для устойчивости
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('❌ Необработанное отклонение промиса:', reason);
-    // НЕ завершаем процесс для устойчивости
+   console.error('❌ Необработанное отклонение промиса:', reason);
+   // НЕ завершаем процесс для устойчивости
 });
 
 // ==================== ЗАПУСК СЕРВЕРА ====================
 
 initDatabase().then(() => {
-    const PORT = process.env.Port || 3000;
+   const PORT = process.env.Port || 3000;
 
-    // Настройка keep-alive для HTTP сервера
-    server.keepAliveTimeout = 120000; // 2 минуты
-    server.headersTimeout = 120000;   // 2 минуты
+   // Настройка keep-alive для HTTP сервера
+   server.keepAliveTimeout = 120000; // 2 минуты
+   server.headersTimeout = 120000;   // 2 минуты
 
-    server.listen(PORT, () => {
-        console.log(`✅ Основной сервер запущен на порту: ${PORT}`);
-        console.log(`🚀 Сервер готов к работе!`);
-    });
+   server.listen(PORT, () => {
+       console.log(`✅ Основной сервер запущен на порту: ${PORT}`);
+       console.log(`🚀 Сервер готов к работе!`);
+   });
 }).catch((error) => {
-    console.error('❌ Ошибка запуска сервера:', error);
-    process.exit(1);
+   console.error('❌ Ошибка запуска сервера:', error);
+   process.exit(1);
 });
