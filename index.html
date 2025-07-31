@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Chatty</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Экран авторизации -->
+    <div class="auth-screen" id="authScreen">
+        <div class="auth-form">
+            <h2 id="authTitle">Вход в систему</h2>
+            <div class="error" id="authError" style="display: none;"></div>
+            <input type="text" id="username" placeholder="Имя пользователя" autocomplete="username">
+            <input type="text" id="displayName" placeholder="Отображаемое имя" style="display: none;">
+            <input type="password" id="password" placeholder="Пароль" autocomplete="current-password">
+            <button id="authBtn">Войти</button>
+            <button class="switch-btn" id="switchBtn">Регистрация</button>
+        </div>
+    </div>
+
+    <!-- Основное приложение -->
+    <div class="main-app" id="mainApp">
+        <div class="app-container">
+            <!-- Левая панель -->
+            <div class="sidebar" id="sidebar">
+                <div class="sidebar-header">
+                    <h3 id="currentUser">Чаты</h3>
+                    <div class="header-buttons">
+                        <button class="profile-btn" id="settingsBtn" title="Настройки">⚙️</button>
+                        <button class="profile-btn" id="profileBtn" title="Профиль">👤</button>
+                    </div>
+                </div>
+                <div class="search-container">
+                    <input type="text" id="userSearch" placeholder="Поиск пользователей...">
+                </div>
+                <div class="chats-list" id="chatsList">
+                    <!-- Чаты будут добавляться динамически -->
+                </div>
+            </div>
+
+            <!-- Правая панель - чат -->
+            <div class="chat-area" id="chatArea">
+                <div class="chat-header" id="chatHeader">
+                    <div class="chat-header-left">
+                        <button class="back-btn" id="backBtn">←</button>
+                        <div class="chat-avatar-container">
+                            <img class="chat-avatar" id="chatAvatar" src="" alt="">
+                        </div>
+                        <div class="chat-title-container">
+                            <span class="chat-title" id="chatTitle">Чат</span>
+                        </div>
+                    </div>
+                    <button class="profile-btn" id="chatProfileBtn">Профиль</button>
+                </div>
+                <div class="chat-messages" id="chatMessages">
+                    <div class="no-chat">Выберите чат для начала общения!</div>
+                </div>
+                <div class="chat-input" id="chatInput">
+                    <div class="input-container">
+                        <input type="text" id="messageInput" placeholder="Введите сообщение...">
+                        <button class="send-btn" id="sendBtn">Отправить</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Экран настроек -->
+            <div class="settings-area" id="settingsArea">
+                <div class="settings-header">
+                    <div class="settings-header-left">
+                        <button class="back-btn" id="settingsBackBtn">←</button>
+                        <span class="settings-title">Настройки</span>
+                    </div>
+                </div>
+                <div class="settings-content">
+                    <div class="settings-category" data-category="profile">
+                        <div class="category-icon">👤</div>
+                        <div class="category-info">
+                            <div class="category-title">Профиль</div>
+                            <div class="category-description">Настройте ваш профиль на ваш вкус</div>
+                        </div>
+                        <div class="category-arrow">›</div>
+                    </div>
+
+                    <div class="settings-category" data-category="password">
+                        <div class="category-icon">🔐</div>
+                        <div class="category-info">
+                            <div class="category-title">Изменить пароль</div>
+                            <div class="category-description">Смените пароль для защиты аккаунта</div>
+                        </div>
+                        <div class="category-arrow">›</div>
+                    </div>
+
+                    <div class="settings-bottom">
+                        <button class="logout-btn" id="logoutBtn">Выйти</button>
+                        <div class="settings-credits">
+                            <div class="credits-title">Сделано с любовью</div>
+                            <div class="credits-names">Woolsane & sxmeblessed</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно профиля -->
+    <div class="modal" id="profileModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Профиль пользователя</h3>
+                <button class="close-btn" id="closeModal">&times;</button>
+            </div>
+            <div class="profile-info" id="profileInfo">
+                <!-- Информация о профиле -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно настроек профиля -->
+    <div class="modal" id="profileSettingsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Настройки профиля</h3>
+                <button class="close-btn" id="closeProfileSettingsModal">&times;</button>
+            </div>
+            <div class="settings-form">
+                <div class="error" id="profileSettingsError" style="display: none;"></div>
+
+                <!-- Аватарка -->
+                <div class="form-group avatar-group">
+                    <div class="avatar-upload-container">
+                        <img class="avatar-preview" id="avatarPreview" src="" alt="Аватар">
+                        <div class="avatar-overlay" id="avatarOverlay">
+                            <span>Изменить фото</span>
+                        </div>
+                        <input type="file" id="avatarInput" accept="image/*" style="display: none;">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="profileSettingsDisplayName">Отображаемое имя:</label>
+                    <input type="text" id="profileSettingsDisplayName" placeholder="Ваше имя">
+                </div>
+
+                <div class="form-group">
+                    <label for="profileSettingsDescription">Описание:</label>
+                    <textarea id="profileSettingsDescription" placeholder="Расскажите о себе..." rows="3"></textarea>
+                </div>
+
+                <button id="saveProfileSettingsBtn" class="save-btn">Сохранить изменения</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно смены пароля -->
+    <div class="modal" id="passwordChangeModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Изменить пароль</h3>
+                <button class="close-btn" id="closePasswordChangeModal">&times;</button>
+            </div>
+            <div class="settings-form">
+                <div class="error" id="passwordChangeError" style="display: none;"></div>
+
+                <div class="form-group">
+                    <label for="currentPassword">Текущий пароль:</label>
+                    <input type="password" id="currentPassword" placeholder="Введите текущий пароль">
+                </div>
+
+                <div class="form-group">
+                    <label for="newPassword">Новый пароль:</label>
+                    <input type="password" id="newPassword" placeholder="Введите новый пароль">
+                </div>
+
+                <div class="form-group">
+                    <label for="confirmPassword">Подтвердите новый пароль:</label>
+                    <input type="password" id="confirmPassword" placeholder="Повторите новый пароль">
+                </div>
+
+                <button id="changePasswordBtn" class="save-btn">Изменить пароль</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
