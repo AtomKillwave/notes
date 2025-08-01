@@ -131,11 +131,20 @@
                 <!-- Аватарка -->
                 <div class="form-group avatar-group">
                     <div class="avatar-upload-container">
-                        <img class="avatar-preview" id="avatarPreview" src="" alt="Аватар">
-                        <div class="avatar-overlay" id="avatarOverlay">
-                            <span>Изменить аватар</span>
+                        <div class="avatar-preview-wrapper">
+                            <img class="avatar-preview" id="avatarPreview" src="" alt="Аватар">
+                            <div class="avatar-animation-indicator" id="avatarAnimationIndicator" style="display: none;">
+                                <span>🎬</span>
+                            </div>
                         </div>
-                        <input type="file" id="avatarInput" accept="image/*,video/*" style="display: none;">
+                        <div class="avatar-overlay" id="avatarOverlay">
+                            <span>Изменить фото</span>
+                        </div>
+                        <input type="file" id="avatarInput" accept="image/*,image/gif,image/webp" style="display: none;">
+                    </div>
+                    <div class="avatar-info">
+                        <small>Поддерживаются статические и анимированные изображения (GIF, WebP)</small>
+                        <small>Максимальный размер: 5 МБ</small>
                     </div>
                 </div>
 
