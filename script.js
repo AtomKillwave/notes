@@ -130,7 +130,8 @@ function updateCharacterCount() {
     }
 }
 
-// Инициализация загрузки аватарки - ИСПРАВЛЕННАЯ ВЕРСИЯ
+// Заменить функцию initializeAvatarUpload на:
+
 function initializeAvatarUpload() {
     if (avatarOverlay && avatarInput) {
         // Добавляем поддержку различных событий для кроссплатформенности
@@ -176,17 +177,18 @@ function initializeAvatarUpload() {
         avatarInput.addEventListener('change', handleAvatarUpload);
 
         // Убеждаемся что input имеет правильные атрибуты
-        avatarInput.setAttribute('accept', 'image/*');
+        avatarInput.setAttribute('accept', 'image/*,image/gif,image/webp');
         avatarInput.setAttribute('capture', 'environment'); // Для камеры на мобильных
     }
 }
 
-// Улучшенная обработка загрузки аватарки
+// Заменить функцию handleAvatarUpload на:
+
 async function handleAvatarUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
 
-    console.log('📷 Выбран файл:', file.name, 'Размер:', file.size);
+    console.log('📷 Выбран файл:', file.name, 'Размер:', file.size, 'Тип:', file.type);
 
     // Проверяем тип файла
     if (!file.type.startsWith('image/')) {
@@ -200,12 +202,28 @@ async function handleAvatarUpload(event) {
         return;
     }
 
+    // Проверяем, является ли файл анимированным
+    const isAnimated = await checkIfImageIsAnimated(file);
+    console.log('🎬 Файл анимированный:', isAnimated);
+
     try {
         // Показываем превью немедленно для лучшего UX
         const reader = new FileReader();
         reader.onload = (e) => {
             avatarPreview.src = e.target.result;
             avatarPreview.classList.remove('default');
+
+            // Показываем/скрываем индикатор анимации
+            const animationIndicator = document.getElementById('avatarAnimationIndicator');
+            if (isAnimated && animationIndicator) {
+                animationIndicator.style.display = 'flex';
+                animationIndicator.classList.add('show');
+                avatarPreview.classList.add('animated');
+            } else if (animationIndicator) {
+                animationIndicator.style.display = 'none';
+                animationIndicator.classList.remove('show');
+                avatarPreview.classList.remove('animated');
+            }
 
             // Добавляем класс для скрытия overlay через CSS
             avatarOverlay.classList.add('has-image');
@@ -215,6 +233,7 @@ async function handleAvatarUpload(event) {
         // Загружаем на сервер
         const formData = new FormData();
         formData.append('avatar', file);
+        formData.append('isAnimated', isAnimated.toString());
 
         const response = await fetch('/upload-avatar', {
             method: 'POST',
@@ -224,8 +243,9 @@ async function handleAvatarUpload(event) {
         const data = await response.json();
 
         if (data.success) {
-            console.log('✅ Аватарка загружена:', data.avatarPath);
+            console.log('✅ Аватарка загружена:', data.avatarPath, 'Анимированная:', isAnimated);
             currentUser.avatar = data.avatarPath;
+            currentUser.avatarIsAnimated = isAnimated;
             updateAvatarsEverywhere();
 
             // Добавляем класс для скрытия overlay после успешной загрузки
@@ -236,19 +256,13 @@ async function handleAvatarUpload(event) {
             }, 3000);
         } else {
             showError(data.message || 'Ошибка загрузки аватарки', profileSettingsError);
-
-            // Возвращаем предыдущую аватарку в случае ошибки
             restorePreviousAvatar();
-            // Убираем класс при ошибке
             avatarOverlay.classList.remove('has-image');
         }
     } catch (error) {
         console.error('❌ Ошибка загрузки аватарки:', error);
         showError('Ошибка загрузки аватарки', profileSettingsError);
-
-        // Возвращаем предыдущую аватарку в случае ошибки
         restorePreviousAvatar();
-        // Убираем класс при ошибке
         avatarOverlay.classList.remove('has-image');
     } finally {
         // Убираем inline стили если они есть
@@ -256,15 +270,101 @@ async function handleAvatarUpload(event) {
     }
 }
 
-// Функция для восстановления предыдущей аватарки
+// Добавить новую функцию для проверки анимации:
+
+async function checkIfImageIsAnimated(file) {
+    return new Promise((resolve) => {
+        // Проверяем по MIME-типу
+        if (file.type === 'image/gif') {
+            // Для GIF проверяем содержимое
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const bytes = new Uint8Array(e.target.result);
+
+                // Простая проверка на анимированный GIF
+                // Ищем наличие нескольких блоков изображений
+                let imageBlockCount = 0;
+                for (let i = 0; i < bytes.length - 3; i++) {
+                    // Ищем маркер блока изображения GIF (0x21, 0xF9)
+                    if (bytes[i] === 0x21 && bytes[i + 1] === 0xF9) {
+                        imageBlockCount++;
+                        if (imageBlockCount > 1) {
+                            resolve(true);
+                            return;
+                        }
+                    }
+                }
+
+                // Если нашли только один блок или меньше, это статичный GIF
+                resolve(false);
+            };
+            reader.onerror = () => resolve(false);
+            reader.readAsArrayBuffer(file);
+        } else if (file.type === 'image/webp') {
+            // Для WebP проверяем заголовки
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const bytes = new Uint8Array(e.target.result);
+
+                // Проверяем WebP заголовок и ищем ANIM chunk
+                if (bytes.length >= 12) {
+                    const riffHeader = String.fromCharCode(...bytes.slice(0, 4));
+                    const webpHeader = String.fromCharCode(...bytes.slice(8, 12));
+
+                    if (riffHeader === 'RIFF' && webpHeader === 'WEBP') {
+                        // Ищем ANIM chunk в WebP
+                        for (let i = 12; i < bytes.length - 4; i++) {
+                            const chunk = String.fromCharCode(...bytes.slice(i, i + 4));
+                            if (chunk === 'ANIM') {
+                                resolve(true);
+                                return;
+                            }
+                        }
+                    }
+                }
+                resolve(false);
+            };
+            reader.onerror = () => resolve(false);
+            reader.readAsArrayBuffer(file);
+        } else {
+            // Все остальные форматы считаем статичными
+            resolve(false);
+        }
+    });
+}
+
+// Заменить функцию restorePreviousAvatar на:
+
 function restorePreviousAvatar() {
+    const animationIndicator = document.getElementById('avatarAnimationIndicator');
+
     if (currentUser.avatar) {
         avatarPreview.src = currentUser.avatar;
         avatarPreview.classList.remove('default');
+
+        if (currentUser.avatarIsAnimated) {
+            avatarPreview.classList.add('animated');
+            if (animationIndicator) {
+                animationIndicator.style.display = 'flex';
+                animationIndicator.classList.add('show');
+            }
+        } else {
+            avatarPreview.classList.remove('animated');
+            if (animationIndicator) {
+                animationIndicator.style.display = 'none';
+                animationIndicator.classList.remove('show');
+            }
+        }
     } else {
         avatarPreview.src = '';
         avatarPreview.classList.add('default');
+        avatarPreview.classList.remove('animated');
         avatarPreview.innerHTML = currentUser.username.charAt(0).toUpperCase();
+
+        if (animationIndicator) {
+            animationIndicator.style.display = 'none';
+            animationIndicator.classList.remove('show');
+        }
     }
 }
 
@@ -294,48 +394,104 @@ function updateAvatarsEverywhere() {
     }
 }
 
-// Функция для получения аватарки пользователя в списке чатов
-function getUserAvatar(username, avatar) {
+// Заменить функцию getUserAvatar на:
+
+function getUserAvatar(username, avatar, isAnimated = false) {
     if (avatar && avatar !== '') {
-        return `<img class="chat-item-avatar" src="${avatar}" alt="${username}">`;
+        const animatedClass = isAnimated ? 'animated' : '';
+        const animationIndicator = isAnimated ? '<div class="animation-indicator show">🎬</div>' : '';
+
+        return `
+            <div style="position: relative;">
+                <img class="chat-item-avatar ${animatedClass}" src="${avatar}" alt="${username}">
+                ${animationIndicator}
+            </div>
+        `;
     } else {
         const initial = username.charAt(0).toUpperCase();
         return `<div class="chat-item-avatar default">${initial}</div>`;
     }
 }
 
-// Функция для получения аватарки в заголовке чата
-function getChatAvatar(username, avatar) {
+// Заменить функцию getChatAvatar на:
+
+function getChatAvatar(username, avatar, isAnimated = false) {
     if (avatar && avatar !== '') {
-        return `<img class="chat-avatar" src="${avatar}" alt="${username}">`;
+        const animatedClass = isAnimated ? 'animated' : '';
+        return `<img class="chat-avatar ${animatedClass}" src="${avatar}" alt="${username}">`;
     } else {
         const initial = username.charAt(0).toUpperCase();
         return `<div class="chat-avatar default">${initial}</div>`;
     }
 }
 
-// Функция для получения аватарки профиля
-function getProfileAvatar(username, avatar) {
+// Заменить функцию getProfileAvatar на:
+
+function getProfileAvatar(username, avatar, isAnimated = false) {
     if (avatar && avatar !== '') {
-        return `<img class="profile-avatar" src="${avatar}" alt="${username}">`;
+        const animatedClass = isAnimated ? 'animated' : '';
+        const animationIndicator = isAnimated ? '<div class="animation-indicator show">🎬</div>' : '';
+
+        return `
+            <div class="profile-avatar-container" style="position: relative;">
+                <img class="profile-avatar ${animatedClass}" src="${avatar}" alt="${username}">
+                ${animationIndicator}
+            </div>
+        `;
     } else {
         const initial = username.charAt(0).toUpperCase();
         return `<div class="profile-avatar default">${initial}</div>`;
     }
 }
 
-// Функция для обновления аватарки в заголовке чата
-function updateChatAvatar(username, avatar) {
+// Заменить функцию updateChatAvatar на:
+
+function updateChatAvatar(username, avatar, isAnimated = false) {
     if (chatAvatar) {
         if (avatar && avatar !== '') {
             chatAvatar.src = avatar;
             chatAvatar.classList.remove('default');
             chatAvatar.alt = username;
+
+            // Добавляем/убираем класс анимации
+            if (isAnimated) {
+                chatAvatar.classList.add('animated');
+            } else {
+                chatAvatar.classList.remove('animated');
+            }
+
+            // Обновляем индикатор анимации
+            updateChatAvatarAnimationIndicator(isAnimated);
         } else {
             chatAvatar.src = '';
             chatAvatar.classList.add('default');
+            chatAvatar.classList.remove('animated');
             chatAvatar.innerHTML = username.charAt(0).toUpperCase();
+            updateChatAvatarAnimationIndicator(false);
         }
+    }
+}
+
+// Добавить новую функцию для управления индикатором анимации в заголовке чата:
+
+function updateChatAvatarAnimationIndicator(isAnimated) {
+    let animationIndicator = chatAvatarContainer.querySelector('.animation-indicator');
+
+    if (isAnimated) {
+        if (!animationIndicator) {
+            animationIndicator = document.createElement('div');
+            animationIndicator.className = 'animation-indicator';
+            animationIndicator.innerHTML = '🎬';
+            chatAvatarContainer.appendChild(animationIndicator);
+        }
+        animationIndicator.classList.add('show');
+    } else if (animationIndicator) {
+        animationIndicator.classList.remove('show');
+        setTimeout(() => {
+            if (animationIndicator && !animationIndicator.classList.contains('show')) {
+                animationIndicator.remove();
+            }
+        }, 300);
     }
 }
 
@@ -617,14 +773,16 @@ function setupSocketHandlers() {
     });
 }
 
-// Функция для обновления аватарки пользователя в чатах
-function updateUserAvatarInChats(username, avatar) {
-    console.log('🔄 Обновляем аватарку пользователя в чатах:', { username, avatar });
+// Обновить функцию updateUserAvatarInChats для поддержки анимированных аватарок:
+
+function updateUserAvatarInChats(username, avatar, avatarIsAnimated = false) {
+    console.log('🔄 Обновляем аватарку пользователя в чатах:', { username, avatar, avatarIsAnimated });
 
     // Обновляем в activeChats
     for (const [chatId, chat] of activeChats) {
         if (chat.username === username) {
             chat.avatar = avatar;
+            chat.avatarIsAnimated = avatarIsAnimated;
             activeChats.set(chatId, chat);
             break;
         }
@@ -635,7 +793,7 @@ function updateUserAvatarInChats(username, avatar) {
 
     // Если это текущий чат, обновляем аватарку в заголовке
     if (currentChat === username) {
-        updateChatAvatar(username, avatar);
+        updateChatAvatar(username, avatar, avatarIsAnimated);
     }
 }
 
@@ -704,7 +862,8 @@ async function restoreApplicationState() {
     }
 }
 
-// Функция для обновления статуса собеседника в чате
+// Обновить функцию updateChatUserStatus для поддержки анимированных аватарок:
+
 async function updateChatUserStatus(username) {
     if (!username) return;
 
@@ -716,9 +875,10 @@ async function updateChatUserStatus(username) {
             const statusText = data.profile.lastSeenText;
             const displayName = data.profile.displayName || username;
             const avatar = data.profile.avatar;
+            const avatarIsAnimated = data.profile.avatarIsAnimated || false;
 
             // Обновляем аватарку
-            updateChatAvatar(username, avatar);
+            updateChatAvatar(username, avatar, avatarIsAnimated);
 
             // Обновляем индикатор статуса на аватарке
             updateChatAvatarStatus(data.profile.isOnline);
@@ -1032,6 +1192,8 @@ async function updateChatsList() {
     await loadUserChats();
 }
 
+// Обновить функцию updateChatUserInfo для сохранения информации об анимации:
+
 async function updateChatUserInfo(username, chatId) {
     try {
         const response = await fetch(`/profile/${username}`);
@@ -1039,7 +1201,7 @@ async function updateChatUserInfo(username, chatId) {
 
         if (data.success) {
             let chat = activeChats.get(chatId);
-            
+
             if (!chat) {
                 // Создаем новый чат если его нет
                 chat = {
@@ -1048,16 +1210,17 @@ async function updateChatUserInfo(username, chatId) {
                     chatId: chatId
                 };
             }
-            
+
             chat.displayName = data.profile.displayName;
             chat.description = data.profile.description;
             chat.avatar = data.profile.avatar;
+            chat.avatarIsAnimated = data.profile.avatarIsAnimated || false;
             chat.isOnline = data.profile.isOnline;
             chat.lastSeenText = data.profile.lastSeenText;
             chat.userId = data.profile.userId;
-            
+
             activeChats.set(chatId, chat);
-            console.log('✅ Обновлена информация о чате:', chatId, 'userId:', chat.userId);
+            console.log('✅ Обновлена информация о чате:', chatId, 'userId:', chat.userId, 'анимированная аватарка:', chat.avatarIsAnimated);
             displayChatsList();
         }
     } catch (error) {
@@ -1065,7 +1228,8 @@ async function updateChatUserInfo(username, chatId) {
     }
 }
 
-// Функция для обновления профиля пользователя в чатах
+// Обновить функцию updateUserProfileInChats для поддержки анимированных аватарок:
+
 function updateUserProfileInChats(username, profile, oldUsername = null) {
     console.log('🔄 Обновляем профиль пользователя в чатах:', { username, oldUsername, profile });
 
@@ -1077,6 +1241,7 @@ function updateUserProfileInChats(username, profile, oldUsername = null) {
             chat.displayName = profile.displayName;
             chat.description = profile.description;
             chat.avatar = profile.avatar;
+            chat.avatarIsAnimated = profile.avatarIsAnimated || false;
             chat.userId = profile.userId;
             activeChats.set(chatId, chat);
 
@@ -1084,7 +1249,7 @@ function updateUserProfileInChats(username, profile, oldUsername = null) {
             if (currentChat === (oldUsername || username)) {
                 currentChat = username; // Обновляем текущий чат
                 const statusText = chat.lastSeenText || (chat.isOnline ? 'В сети' : 'Был(а) в сети давно');
-                updateChatAvatar(username, profile.avatar);
+                updateChatAvatar(username, profile.avatar, profile.avatarIsAnimated);
                 updateChatAvatarStatus(chat.isOnline);
                 chatTitle.innerHTML = `
                     <div>${profile.displayName}</div>
@@ -1099,6 +1264,8 @@ function updateUserProfileInChats(username, profile, oldUsername = null) {
     // Обновляем отображение списка чатов
     displayChatsList();
 }
+
+// Обновить функцию displayChatsList для поддержки анимированных аватарок:
 
 function displayChatsList() {
     const chatsContainer = document.createElement('div');
@@ -1125,7 +1292,7 @@ function displayChatsList() {
                 ${chat.lastMessage.fromUserId === currentUser.userId ? 'Вы: ' : ''}${chat.lastMessage.text}
             </div>` : '';
 
-        const avatarHtml = getUserAvatar(chat.username, chat.avatar);
+        const avatarHtml = getUserAvatar(chat.username, chat.avatar, chat.avatarIsAnimated);
 
         chatItem.innerHTML = `
             <div class="chat-item-avatar-container">
@@ -1219,6 +1386,8 @@ userSearch.addEventListener('input', () => {
     }, 300);
 });
 
+// Обновить функцию displaySearchResults для поддержки анимированных аватарок:
+
 function displaySearchResults(users) {
     chatsList.innerHTML = '';
 
@@ -1228,7 +1397,7 @@ function displaySearchResults(users) {
         const chatItem = document.createElement('div');
         chatItem.className = 'chat-item';
 
-        const avatarHtml = getUserAvatar(user.username, user.avatar);
+        const avatarHtml = getUserAvatar(user.username, user.avatar, user.avatarIsAnimated);
 
         chatItem.innerHTML = `
             <div class="chat-item-avatar-container">
@@ -1244,7 +1413,6 @@ function displaySearchResults(users) {
         `;
 
         chatItem.addEventListener('click', () => {
-            // Убеждаемся что у нас есть userId
             console.log('🔍 Открываем чат с:', { username: user.username, userId: user.userId });
             openChat(user.username, user.displayName, user.userId);
         });
@@ -1523,7 +1691,7 @@ backBtn.addEventListener('click', () => {
             item.classList.remove('active');
         });
 
-        chatMessages.innerHTML = '<div class="no-chat">Выберите чат для начала общения</div>';
+        chatMessages.innerHTML = '<div class="no-chat">Выберите чат для начала общения!</div>';
     }
 });
 
@@ -1641,6 +1809,8 @@ chatProfileBtn.addEventListener('click', () => {
     }
 });
 
+// Обновить функцию showProfile для поддержки анимированных аватарок:
+
 async function showProfile(username) {
     try {
         const response = await fetch(`/profile/${username}`);
@@ -1650,7 +1820,7 @@ async function showProfile(username) {
             const profile = data.profile;
             const registeredDate = new Date(profile.registeredAt).toLocaleDateString();
 
-            const avatarHtml = getProfileAvatar(profile.username, profile.avatar);
+            const avatarHtml = getProfileAvatar(profile.username, profile.avatar, profile.avatarIsAnimated);
 
             profileInfo.innerHTML = `
                 <div class="profile-header">
