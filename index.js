@@ -34,6 +34,16 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// ==================== BOT CONFIGURATION ====================
+
+const BOT_CONFIG = {
+    username: 'Chatty',
+    displayName: 'Чатти',
+    description: 'Официальный аккаунт Chatty! Проще говоря это ваш хранитель важных сообщений! Используйте его как вам угодно!',
+    welcomeMessage: `Добро пожаловать в Chatty! 👋 Все сообщения, аккаунты и чаты передаются в зашифрованном виде! 🔥 Полная конфиденциальность! ❓ Используйте этот чат как личный блокнот! 🥰`,
+    avatar: null // Будет установлена при инициализации
+};
+
 // Настройка multer для обработки загрузки файлов
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -278,11 +288,188 @@ async function initDatabase() {
         // Миграция существующих данных
         await migrateToUserIdSystem();
 
+        // Создаем/обновляем бот-аккаунт
+        const botUserId = await ensureBotAccountExists();
+        if (botUserId) {
+            console.log('🤖 Бот-система готова к работе');
+        }
+
         console.log('✅ База данных успешно инициализирована с системой user_id');
     } catch (error) {
         console.error('❌ Ошибка инициализации базы данных:', error);
         process.exit(1);
     }
+}
+
+// ==================== BOT SYSTEM FUNCTIONS ====================
+
+// Функция для создания/обновления бот-аккаунта
+async function ensureBotAccountExists() {
+    try {
+        console.log('🤖 Проверяем существование бот-аккаунта...');
+
+        // Проверяем, существует ли бот
+        const botResult = await pool.query('SELECT user_id, avatar_url FROM users WHERE username = $1', [BOT_CONFIG.username]);
+
+        let botUserId;
+
+        if (botResult.rows.length === 0) {
+            console.log('🤖 Создаем новый бот-аккаунт...');
+
+            // Создаем зашифрованный пароль для бота (случайный, но мы его не используем)
+            const salt = generateSalt();
+            const hashedPassword = hashPassword(crypto.randomBytes(32).toString('hex'), salt);
+
+            // Загружаем дефолтную аватарку для бота
+            let botAvatarUrl = '';
+            try {
+                const fs = require('fs');
+                const path = require('path');
+
+                const botAvatarPath = path.join(__dirname, 'user-icon.png');
+
+                if (fs.existsSync(botAvatarPath)) {
+                    const fileBuffer = fs.readFileSync(botAvatarPath);
+                    // Используем безопасное имя файла без специальных символов
+                    const fileName = `avatars/bot_avatar_${Date.now()}.png`;
+
+                    console.log('📤 Загружаем аватарку для бота...');
+
+                    const { data, error } = await supabase.storage
+                        .from('avatars')
+                        .upload(fileName, fileBuffer, {
+                            contentType: 'image/png',
+                            upsert: false
+                        });
+
+                    if (!error) {
+                        const { data: publicData } = supabase.storage
+                            .from('avatars')
+                            .getPublicUrl(fileName);
+
+                        botAvatarUrl = publicData.publicUrl;
+                        BOT_CONFIG.avatar = botAvatarUrl;
+                        console.log('✅ Аватарка бота загружена:', botAvatarUrl);
+                    } else {
+                        console.error('❌ Ошибка загрузки аватарки бота:', error);
+                        // Устанавливаем дефолтную аватарку если загрузка не удалась
+                        console.log('🔄 Устанавливаем дефолтную аватарку для бота...');
+                        botAvatarUrl = '';
+                    }
+                } else {
+                    console.log('⚠️ Файл user-icon.png не найден, бот будет без аватарки');
+                }
+            } catch (avatarError) {
+                console.error('❌ Ошибка при загрузке аватарки бота:', avatarError);
+                console.log('🔄 Устанавливаем дефолтную аватарку для бота...');
+                botAvatarUrl = '';
+            }
+
+            // Создаем бот-аккаунт
+            const insertResult = await pool.query(
+                'INSERT INTO users (username, password_hash, password_salt, display_name, description, avatar_url) VALUES ($1, $2, $3, $4, $5, $6) RETURNING user_id',
+                [BOT_CONFIG.username, hashedPassword, salt, BOT_CONFIG.displayName, BOT_CONFIG.description, botAvatarUrl]
+            );
+
+            botUserId = insertResult.rows[0].user_id;
+            console.log(`✅ Бот-аккаунт создан: ${BOT_CONFIG.username} (user_id: ${botUserId})`);
+        } else {
+            botUserId = botResult.rows[0].user_id;
+            BOT_CONFIG.avatar = botResult.rows[0].avatar_url || '';
+            console.log(`✅ Бот-аккаунт найден: ${BOT_CONFIG.username} (user_id: ${botUserId})`);
+
+            // Обновляем информацию бота (на случай изменений в конфигурации)
+            await pool.query(
+                'UPDATE users SET display_name = $1, description = $2 WHERE user_id = $3',
+                [BOT_CONFIG.displayName, BOT_CONFIG.description, botUserId]
+            );
+
+            // Если у бота нет аватарки, пытаемся загрузить дефолтную
+            if (!BOT_CONFIG.avatar) {
+                console.log('🔄 У бота нет аватарки, загружаем дефолтную...');
+                try {
+                    const fs = require('fs');
+                    const path = require('path');
+
+                    const botAvatarPath = path.join(__dirname, 'user-icon.png');
+
+                    if (fs.existsSync(botAvatarPath)) {
+                        const fileBuffer = fs.readFileSync(botAvatarPath);
+                        const fileName = `avatars/bot_avatar_${Date.now()}.png`;
+
+                        const { data, error } = await supabase.storage
+                            .from('avatars')
+                            .upload(fileName, fileBuffer, {
+                                contentType: 'image/png',
+                                upsert: false
+                            });
+
+                        if (!error) {
+                            const { data: publicData } = supabase.storage
+                                .from('avatars')
+                                .getPublicUrl(fileName);
+
+                            BOT_CONFIG.avatar = publicData.publicUrl;
+
+                            // Обновляем аватарку в базе данных
+                            await pool.query(
+                                'UPDATE users SET avatar_url = $1 WHERE user_id = $2',
+                                [BOT_CONFIG.avatar, botUserId]
+                            );
+
+                            console.log('✅ Дефолтная аватарка загружена для бота:', BOT_CONFIG.avatar);
+                        }
+                    }
+                } catch (avatarError) {
+                    console.error('❌ Ошибка загрузки дефолтной аватарки для бота:', avatarError);
+                }
+            }
+        }
+
+        return botUserId;
+    } catch (error) {
+        console.error('❌ Ошибка создания/обновления бот-аккаунта:', error);
+        return null;
+    }
+}
+
+// Функция для отправки приветственного сообщения от бота
+async function sendBotWelcomeMessage(newUserId, botUserId) {
+    try {
+        console.log(`🤖 Отправляем приветственное сообщение пользователю: user_id ${newUserId}`);
+
+        // Создаем чат между ботом и новым пользователем
+        const chatId = createChatId(botUserId, newUserId);
+        await ensureChatExists(botUserId, newUserId);
+
+        // Получаем ключ шифрования для чата
+        const encryptionKey = await getChatEncryptionKey(chatId);
+
+        if (!encryptionKey) {
+            console.error('❌ Не удалось получить ключ шифрования для приветственного чата');
+            return false;
+        }
+
+        // Шифруем приветственное сообщение
+        const encryptedMessage = encryptMessage(BOT_CONFIG.welcomeMessage, encryptionKey);
+
+        // Сохраняем сообщение в базу данных
+        await pool.query(
+            'INSERT INTO messages (chat_id, from_user_id, encrypted_message) VALUES ($1, $2, $3)',
+            [chatId, botUserId, encryptedMessage]
+        );
+
+        console.log(`✅ Приветственное сообщение отправлено пользователю: user_id ${newUserId}`);
+        return true;
+    } catch (error) {
+        console.error('❌ Ошибка отправки приветственного сообщения:', error);
+        return false;
+    }
+}
+
+// Функция для проверки онлайн статуса бота (всегда онлайн)
+function isBotOnline(username) {
+    return username === BOT_CONFIG.username;
 }
 
 // Миграция к системе user_id
@@ -419,6 +606,17 @@ async function migrateToUserIdSystem() {
             await pool.query(`ALTER TABLE messages DROP COLUMN IF EXISTS from_user`);
 
             console.log('✅ Миграция messages завершена');
+        }
+
+        // Мигрируем старого бота с кириллическим именем если он существует
+        const oldBotResult = await pool.query('SELECT user_id FROM users WHERE username = $1', ['Сhatty']);
+        if (oldBotResult.rows.length > 0) {
+            console.log('🔄 Мигрируем старого бота с кириллическим именем...');
+            await pool.query(
+                'UPDATE users SET username = $1 WHERE username = $2',
+                ['chattybot', 'Сhatty']
+            );
+            console.log('✅ Старый бот успешно мигрирован на новое имя');
         }
 
         console.log('✅ Миграция к системе user_id завершена успешно');
@@ -598,6 +796,12 @@ function formatLastSeen(lastSeenTime) {
 
 // Функция для проверки онлайн статуса пользователя (теперь по user_id)
 function isUserOnline(userId) {
+    // Бот всегда онлайн
+    if (userId && typeof userId === 'number') {
+        // Проверяем в кеше, является ли этот userId ботом
+        // Мы не можем здесь делать запрос к БД, поэтому полагаемся на другие проверки
+    }
+
     for (const [ip, data] of onlineUsersByIP) {
         if (data.userId === userId) {
             const timeSinceLastActivity = Date.now() - data.lastActivity;
@@ -609,6 +813,16 @@ function isUserOnline(userId) {
 
 // Функция для получения статуса пользователя (теперь по user_id)
 async function getUserStatus(userId) {
+    // Проверяем, является ли это ботом
+    try {
+        const userResult = await pool.query('SELECT username FROM users WHERE user_id = $1', [userId]);
+        if (userResult.rows.length > 0 && userResult.rows[0].username === BOT_CONFIG.username) {
+            return { isOnline: true, lastSeenText: 'В сети' };
+        }
+    } catch (error) {
+        console.error('❌ Ошибка проверки бота:', error);
+    }
+
     const isOnline = isUserOnline(userId);
     if (isOnline) {
         return { isOnline: true, lastSeenText: 'В сети' };
@@ -919,6 +1133,19 @@ app.post('/register', async (req, res) => {
         const userId = insertResult.rows[0].user_id;
 
         console.log(`✅ Новый пользователь зарегистрирован: ${username} (user_id: ${userId}, IP: ${getClientIP(req)}) с дефолтной аватаркой`);
+
+        // Отправляем приветственное сообщение от бота
+        try {
+            const botResult = await pool.query('SELECT user_id FROM users WHERE username = $1', [BOT_CONFIG.username]);
+            if (botResult.rows.length > 0) {
+                const botUserId = botResult.rows[0].user_id;
+                await sendBotWelcomeMessage(userId, botUserId);
+                console.log(`🤖 Приветственное сообщение отправлено новому пользователю: ${username}`);
+            }
+        } catch (welcomeError) {
+            console.error('❌ Ошибка отправки приветственного сообщения:', welcomeError);
+        }
+
         res.json({ success: true });
     } catch (error) {
         console.error('❌ Ошибка регистрации:', error);
@@ -1032,6 +1259,75 @@ app.post('/users-status', async (req, res) => {
         res.json({ success: true, users: results });
     } catch (error) {
         console.error('❌ Ошибка получения статусов пользователей:', error);
+        res.json({ success: false, message: 'Внутренняя ошибка сервера' });
+    }
+});
+
+// API для получения информации о боте
+app.get('/bot-info', async (req, res) => {
+    try {
+        const botResult = await pool.query(
+            'SELECT user_id, username, display_name, description, avatar_url FROM users WHERE username = $1',
+            [BOT_CONFIG.username]
+        );
+
+        if (botResult.rows.length === 0) {
+            return res.json({ success: false, message: 'Бот не найден' });
+        }
+
+        const bot = botResult.rows[0];
+        res.json({
+            success: true,
+            bot: {
+                userId: bot.user_id,
+                username: bot.username,
+                displayName: bot.display_name,
+                description: bot.description,
+                avatar: bot.avatar_url,
+                isOnline: true,
+                lastSeenText: 'В сети'
+            }
+        });
+    } catch (error) {
+        console.error('❌ Ошибка получения информации о боте:', error);
+        res.json({ success: false, message: 'Внутренняя ошибка сервера' });
+    }
+});
+
+// API для обновления настроек бота (только для администратора)
+app.post('/update-bot', async (req, res) => {
+    const { displayName, description, welcomeMessage } = req.body;
+    const clientIP = getClientIP(req);
+
+    try {
+        // Проверяем, является ли пользователь администратором (первый зарегистрированный пользователь)
+        const sessionResult = await pool.query('SELECT user_id FROM user_sessions WHERE ip = $1 AND expires_at > CURRENT_TIMESTAMP', [clientIP]);
+        if (sessionResult.rows.length === 0) {
+            return res.json({ success: false, message: 'Сессия истекла' });
+        }
+
+        const userId = sessionResult.rows[0].user_id;
+
+        // Проверяем, является ли пользователь администратором (user_id = 1)
+        if (userId !== 1) {
+            return res.json({ success: false, message: 'Доступ запрещен' });
+        }
+
+        // Обновляем настройки бота
+        await pool.query(
+            'UPDATE users SET display_name = $1, description = $2 WHERE username = $3',
+            [displayName || BOT_CONFIG.displayName, description || BOT_CONFIG.description, BOT_CONFIG.username]
+        );
+
+        // Обновляем конфигурацию в памяти
+        if (displayName) BOT_CONFIG.displayName = displayName;
+        if (description) BOT_CONFIG.description = description;
+        if (welcomeMessage) BOT_CONFIG.welcomeMessage = welcomeMessage;
+
+        console.log(`🤖 Настройки бота обновлены администратором: user_id ${userId}`);
+        res.json({ success: true, message: 'Настройки бота обновлены' });
+    } catch (error) {
+        console.error('❌ Ошибка обновления настроек бота:', error);
         res.json({ success: false, message: 'Внутренняя ошибка сервера' });
     }
 });
