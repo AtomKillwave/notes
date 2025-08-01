@@ -1037,15 +1037,27 @@ async function updateChatUserInfo(username, chatId) {
         const response = await fetch(`/profile/${username}`);
         const data = await response.json();
 
-        if (data.success && activeChats.has(chatId)) {
-            const chat = activeChats.get(chatId);
+        if (data.success) {
+            let chat = activeChats.get(chatId);
+            
+            if (!chat) {
+                // Создаем новый чат если его нет
+                chat = {
+                    userId: data.profile.userId,
+                    username: username,
+                    chatId: chatId
+                };
+            }
+            
             chat.displayName = data.profile.displayName;
             chat.description = data.profile.description;
             chat.avatar = data.profile.avatar;
             chat.isOnline = data.profile.isOnline;
             chat.lastSeenText = data.profile.lastSeenText;
             chat.userId = data.profile.userId;
+            
             activeChats.set(chatId, chat);
+            console.log('✅ Обновлена информация о чате:', chatId, 'userId:', chat.userId);
             displayChatsList();
         }
     } catch (error) {
@@ -1153,11 +1165,29 @@ function isMessageForCurrentChat(messageData) {
 }
 
 function getCurrentChatUserId() {
+    // Проверяем activeChats по username
     for (const [chatId, chat] of activeChats) {
         if (chat.username === currentChat) {
             return chat.userId;
         }
     }
+    
+    // Если не найден в activeChats, пытаемся извлечь из currentChatId
+    if (currentChatId) {
+        const parts = currentChatId.split('_');
+        if (parts.length === 2) {
+            const userId1 = parseInt(parts[0]);
+            const userId2 = parseInt(parts[1]);
+            
+            // Возвращаем ID, который не является текущим пользователем
+            if (userId1 === currentUser.userId) {
+                return userId2;
+            } else if (userId2 === currentUser.userId) {
+                return userId1;
+            }
+        }
+    }
+    
     return null;
 }
 
@@ -1214,6 +1244,8 @@ function displaySearchResults(users) {
         `;
 
         chatItem.addEventListener('click', () => {
+            // Убеждаемся что у нас есть userId
+            console.log('🔍 Открываем чат с:', { username: user.username, userId: user.userId });
             openChat(user.username, user.displayName, user.userId);
         });
 
@@ -1223,6 +1255,20 @@ function displaySearchResults(users) {
 
 function openChat(username, displayName, userId) {
     const chatId = getChatId(currentUser.userId, userId);
+    
+    // Убеждаемся что чат добавлен в activeChats с правильным userId
+    if (!activeChats.has(chatId)) {
+        const newChat = {
+            userId: userId,
+            username: username,
+            displayName: displayName,
+            chatId: chatId,
+            isOnline: false,
+            lastSeenText: 'Загрузка...'
+        };
+        activeChats.set(chatId, newChat);
+    }
+    
     openChatById(chatId, username, displayName);
 }
 
@@ -1351,8 +1397,36 @@ function sendMessage() {
     }
 
     const toUserId = getCurrentChatUserId();
+    console.log('🔍 Отладка sendMessage:', {
+        currentChat,
+        currentChatId,
+        currentUser: currentUser.userId,
+        toUserId,
+        activeChatsSize: activeChats.size,
+        activeChatsKeys: Array.from(activeChats.keys())
+    });
+    
     if (!toUserId) {
-        console.log('⚠️ Не найден userId собеседника');
+        console.log('⚠️ Не найден userId собеседника, пытаемся обновить информацию о чате');
+        
+        // Пытаемся обновить информацию о чате
+        updateChatUserInfo(currentChat, currentChatId).then(() => {
+            const retryToUserId = getCurrentChatUserId();
+            if (retryToUserId) {
+                console.log('✅ Получен userId после обновления:', retryToUserId);
+                socket.emit('send-message', {
+                    chatId: currentChatId,
+                    message,
+                    fromUserId: currentUser.userId,
+                    toUserId: retryToUserId
+                });
+                messageInput.value = '';
+                lastActivity = Date.now();
+            } else {
+                console.error('❌ Все еще не можем найти userId собеседника');
+                showConnectionError('Ошибка: не удается определить получателя сообщения');
+            }
+        });
         return;
     }
 
@@ -1693,10 +1767,7 @@ changePasswordBtn.addEventListener('click', async () => {
         const data = await response.json();
 
         if (data.success) {
-            showSuccess('Пароль успешно изменен!', passwordChangeError);
-            setTimeout(() => {
-                passwordChangeModal.style.display = 'none';
-            }, 2000);
+            passwordChangeModal.style.display = 'none';
         } else {
             showError(data.message, passwordChangeError);
         }
