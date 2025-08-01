@@ -133,20 +133,31 @@
                     <div class="avatar-upload-container">
                         <img class="avatar-preview" id="avatarPreview" src="" alt="Аватар">
                         <div class="avatar-overlay" id="avatarOverlay">
-                            <span>Изменить фото</span>
+                            <span>Изменить аватар</span>
                         </div>
-                        <input type="file" id="avatarInput" accept="image/*" style="display: none;">
+                        <input type="file" id="avatarInput" accept="image/*,video/*" style="display: none;">
                     </div>
+                </div>
+
+                <!-- Имя пользователя -->
+                <div class="form-group">
+                    <label for="profileSettingsUsername">Имя пользователя:</label>
+                    <input type="text" id="profileSettingsUsername" placeholder="@username" maxlength="50">
+                    <div class="input-hint">Уникальное имя для поиска и идентификации</div>
                 </div>
 
                 <div class="form-group">
                     <label for="profileSettingsDisplayName">Отображаемое имя:</label>
-                    <input type="text" id="profileSettingsDisplayName" placeholder="Ваше имя">
+                    <input type="text" id="profileSettingsDisplayName" placeholder="Ваше имя" maxlength="100">
+                    <div class="input-hint">Имя, которое видят другие пользователи</div>
                 </div>
 
                 <div class="form-group">
                     <label for="profileSettingsDescription">Описание:</label>
-                    <textarea id="profileSettingsDescription" placeholder="Расскажите о себе..." rows="3"></textarea>
+                    <textarea id="profileSettingsDescription" placeholder="Расскажите о себе..." rows="3" maxlength="500"></textarea>
+                    <div class="input-hint character-count">
+                        <span id="descriptionCount">0</span>/500 символов
+                    </div>
                 </div>
 
                 <button id="saveProfileSettingsBtn" class="save-btn">Сохранить изменения</button>
@@ -172,6 +183,7 @@
                 <div class="form-group">
                     <label for="newPassword">Новый пароль:</label>
                     <input type="password" id="newPassword" placeholder="Введите новый пароль">
+                    <div class="input-hint">Минимум 6 символов</div>
                 </div>
 
                 <div class="form-group">
