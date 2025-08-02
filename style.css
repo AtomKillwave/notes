@@ -380,6 +380,14 @@ body {
     display: flex;
     align-items: center;
     gap: 16px;
+    flex: 1; /* Добавляем flex: 1 чтобы занять всё доступное место */
+}
+
+/* Добавляем новый контейнер для правых кнопок */
+.chat-header-right {
+    display: flex;
+    gap: 8px;
+    align-items: center;
 }
 
 .back-btn {
