@@ -28,7 +28,7 @@ const supabaseUrl = process.env.Cloud_Url;
 const supabaseKey = process.env.Cloud_Key;
 
 if (!supabaseUrl || !supabaseKey) {
-    console.error('❌ Отсутствуют секреты Supabase: Cloud_Url и Cloud_Key');
+    console.error(`❌ Отсутствуют секреты Supabase: Cloud_Url и Cloud_Key`);
     process.exit(1);
 }
 
@@ -39,8 +39,8 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 const BOT_CONFIG = {
     username: 'Chatty',
     displayName: 'Чатти',
-    description: 'Официальный аккаунт Chatty! Проще говоря это ваш хранитель важных сообщений! Используйте его как вам угодно!',
-    welcomeMessage: `Добро пожаловать в Chatty! 👋 Все сообщения, аккаунты и чаты передаются в зашифрованном виде! 🔥 Полная конфиденциальность! ❓ Используйте этот чат как личный блокнот! 🥰`,
+    description: 'Официальный аккаунт Chatty! Используйте чат как избранное!',
+    welcomeMessage: `Добро пожаловать в Chatty! 🎉 Ваш персональный мессенджер для общения с близкими. Общайтесь, делитесь, сохраняйте важное в избранном. Начните разговор прямо сейчас! 💬`,
     avatar: null // Будет установлена при инициализации
 };
 
@@ -98,7 +98,7 @@ function encryptMessage(message, key) {
         encrypted += cipher.final('hex');
         return iv.toString('hex') + ':' + encrypted;
     } catch (error) {
-        console.error('❌ Ошибка шифрования сообщения:', error);
+        console.error(`❌ Ошибка шифрования сообщения:`, error);
         return message; // Возвращаем исходное сообщение при ошибке
     }
 }
@@ -122,7 +122,7 @@ function decryptMessage(encryptedMessage, key) {
         decrypted += decipher.final('utf8');
         return decrypted;
     } catch (error) {
-        console.error('❌ Ошибка расшифровки сообщения:', error);
+        console.error(`❌ Ошибка расшифровки сообщения:`, error);
         return encryptedMessage; // Возвращаем зашифрованное сообщение при ошибке
     }
 }
@@ -167,7 +167,7 @@ async function uploadAvatarToSupabase(fileBuffer, fileName, mimeType) {
         console.log(`✅ Аватарка загружена: ${publicData.publicUrl}`);
         return publicData.publicUrl;
     } catch (error) {
-        console.error('❌ Ошибка при загрузке аватарки:', error);
+        console.error(`❌ Ошибка при загрузке аватарки:`, error);
         return null;
     }
 }
@@ -189,13 +189,13 @@ async function deleteOldAvatarFromSupabase(avatarUrl) {
                 .remove([fullPath]);
 
             if (error) {
-                console.error('❌ Ошибка удаления старой аватарки:', error);
+                console.error(`❌ Ошибка удаления старой аватарки:`, error);
             } else {
                 console.log(`🗑️ Старая аватарка удалена: ${fullPath}`);
             }
         }
     } catch (error) {
-        console.error('❌ Ошибка при удалении старой аватарки:', error);
+        console.error(`❌ Ошибка при удалении старой аватарки:`, error);
     }
 }
 
@@ -211,7 +211,7 @@ const pool = new Pool({
 // Инициализация таблиц в базе данных
 async function initDatabase() {
     try {
-        console.log('🔄 Инициализация базы данных...');
+        console.log(`🔄 Инициализация базы данных...`);
 
         // Таблица пользователей с user_id как PRIMARY KEY
         await pool.query(`
@@ -294,9 +294,9 @@ async function initDatabase() {
             console.log('🤖 Бот-система готова к работе');
         }
 
-        console.log('✅ База данных успешно инициализирована с системой user_id');
+        console.log(`✅ База данных успешно инициализирована с системой user_id`);
     } catch (error) {
-        console.error('❌ Ошибка инициализации базы данных:', error);
+        console.error(`❌ Ошибка инициализации базы данных:`, error);
         process.exit(1);
     }
 }
@@ -314,7 +314,7 @@ async function ensureBotAccountExists() {
         let botUserId;
 
         if (botResult.rows.length === 0) {
-            console.log('🤖 Создаем новый бот-аккаунт...');
+            console.log(`🤖 Создаем новый бот-аккаунт...`);
 
             // Создаем зашифрованный пароль для бота (случайный, но мы его не используем)
             const salt = generateSalt();
@@ -333,7 +333,7 @@ async function ensureBotAccountExists() {
                     // Используем безопасное имя файла без специальных символов
                     const fileName = `avatars/bot_avatar_${Date.now()}.png`;
 
-                    console.log('📤 Загружаем аватарку для бота...');
+                    console.log(`📤 Загружаем аватарку для бота...`);
 
                     const { data, error } = await supabase.storage
                         .from('avatars')
@@ -349,19 +349,19 @@ async function ensureBotAccountExists() {
 
                         botAvatarUrl = publicData.publicUrl;
                         BOT_CONFIG.avatar = botAvatarUrl;
-                        console.log('✅ Аватарка бота загружена:', botAvatarUrl);
+                        console.log(`✅ Аватарка бота загружена:`, botAvatarUrl);
                     } else {
-                        console.error('❌ Ошибка загрузки аватарки бота:', error);
+                        console.error(`❌ Ошибка загрузки аватарки бота:`, error);
                         // Устанавливаем дефолтную аватарку если загрузка не удалась
-                        console.log('🔄 Устанавливаем дефолтную аватарку для бота...');
+                        console.log(`🔄 Устанавливаем дефолтную аватарку для бота...`);
                         botAvatarUrl = '';
                     }
                 } else {
                     console.log('⚠️ Файл user-icon.png не найден, бот будет без аватарки');
                 }
             } catch (avatarError) {
-                console.error('❌ Ошибка при загрузке аватарки бота:', avatarError);
-                console.log('🔄 Устанавливаем дефолтную аватарку для бота...');
+                console.error(`❌ Ошибка при загрузке аватарки бота:`, avatarError);
+                console.log(`🔄 Устанавливаем дефолтную аватарку для бота...`);
                 botAvatarUrl = '';
             }
 
@@ -386,7 +386,7 @@ async function ensureBotAccountExists() {
 
             // Если у бота нет аватарки, пытаемся загрузить дефолтную
             if (!BOT_CONFIG.avatar) {
-                console.log('🔄 У бота нет аватарки, загружаем дефолтную...');
+                console.log(`🔄 У бота нет аватарки, загружаем дефолтную...`);
                 try {
                     const fs = require('fs');
                     const path = require('path');
@@ -417,18 +417,18 @@ async function ensureBotAccountExists() {
                                 [BOT_CONFIG.avatar, botUserId]
                             );
 
-                            console.log('✅ Дефолтная аватарка загружена для бота:', BOT_CONFIG.avatar);
+                            console.log(`✅ Дефолтная аватарка загружена для бота:`, BOT_CONFIG.avatar);
                         }
                     }
                 } catch (avatarError) {
-                    console.error('❌ Ошибка загрузки дефолтной аватарки для бота:', avatarError);
+                    console.error(`❌ Ошибка загрузки дефолтной аватарки для бота:`, avatarError);
                 }
             }
         }
 
         return botUserId;
     } catch (error) {
-        console.error('❌ Ошибка создания/обновления бот-аккаунта:', error);
+        console.error(`❌ Ошибка создания/обновления бот-аккаунта:`, error);
         return null;
     }
 }
@@ -446,7 +446,7 @@ async function sendBotWelcomeMessage(newUserId, botUserId) {
         const encryptionKey = await getChatEncryptionKey(chatId);
 
         if (!encryptionKey) {
-            console.error('❌ Не удалось получить ключ шифрования для приветственного чата');
+            console.error(`❌ Не удалось получить ключ шифрования для приветственного чата`);
             return false;
         }
 
@@ -462,7 +462,7 @@ async function sendBotWelcomeMessage(newUserId, botUserId) {
         console.log(`✅ Приветственное сообщение отправлено пользователю: user_id ${newUserId}`);
         return true;
     } catch (error) {
-        console.error('❌ Ошибка отправки приветственного сообщения:', error);
+        console.error(`❌ Ошибка отправки приветственного сообщения:`, error);
         return false;
     }
 }
@@ -475,7 +475,7 @@ function isBotOnline(username) {
 // Миграция к системе user_id
 async function migrateToUserIdSystem() {
     try {
-        console.log('🔄 Выполняем миграцию к системе user_id...');
+        console.log(`🔄 Выполняем миграцию к системе user_id...`);
 
         // Проверяем, нужна ли миграция user_sessions
         const sessionColumns = await pool.query(`
@@ -485,7 +485,7 @@ async function migrateToUserIdSystem() {
         `);
 
         if (sessionColumns.rows.length > 0) {
-            console.log('🔄 Мигрируем user_sessions...');
+            console.log(`🔄 Мигрируем user_sessions...`);
 
             // Добавляем новый столбец user_id
             await pool.query(`ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS user_id INTEGER`);
@@ -513,7 +513,7 @@ async function migrateToUserIdSystem() {
             // Удаляем старый столбец username
             await pool.query(`ALTER TABLE user_sessions DROP COLUMN IF EXISTS username`);
 
-            console.log('✅ Миграция user_sessions завершена');
+            console.log(`✅ Миграция user_sessions завершена`);
         }
 
         // Проверяем, нужна ли миграция chats
@@ -524,7 +524,7 @@ async function migrateToUserIdSystem() {
         `);
 
         if (chatColumns.rows.length > 0) {
-            console.log('🔄 Мигрируем chats...');
+            console.log(`🔄 Мигрируем chats...`);
 
             // Добавляем новые столбцы
             await pool.query(`ALTER TABLE chats ADD COLUMN IF NOT EXISTS user1_id INTEGER`);
@@ -567,7 +567,7 @@ async function migrateToUserIdSystem() {
             await pool.query(`ALTER TABLE chats DROP COLUMN IF EXISTS user1`);
             await pool.query(`ALTER TABLE chats DROP COLUMN IF EXISTS user2`);
 
-            console.log('✅ Миграция chats завершена');
+            console.log(`✅ Миграция chats завершена`);
         }
 
         // Проверяем, нужна ли миграция messages
@@ -578,7 +578,7 @@ async function migrateToUserIdSystem() {
         `);
 
         if (messageColumns.rows.length > 0) {
-            console.log('🔄 Мигрируем messages...');
+            console.log(`🔄 Мигрируем messages...`);
 
             // Добавляем новый столбец
             await pool.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS from_user_id INTEGER`);
@@ -605,23 +605,23 @@ async function migrateToUserIdSystem() {
             // Удаляем старый столбец
             await pool.query(`ALTER TABLE messages DROP COLUMN IF EXISTS from_user`);
 
-            console.log('✅ Миграция messages завершена');
+            console.log(`✅ Миграция messages завершена`);
         }
 
         // Мигрируем старого бота с кириллическим именем если он существует
         const oldBotResult = await pool.query('SELECT user_id FROM users WHERE username = $1', ['Сhatty']);
         if (oldBotResult.rows.length > 0) {
-            console.log('🔄 Мигрируем старого бота с кириллическим именем...');
+            console.log(`🔄 Мигрируем старого бота с кириллическим именем...`);
             await pool.query(
                 'UPDATE users SET username = $1 WHERE username = $2',
                 ['chattybot', 'Сhatty']
             );
-            console.log('✅ Старый бот успешно мигрирован на новое имя');
+            console.log(`✅ Старый бот успешно мигрирован на новое имя`);
         }
 
-        console.log('✅ Миграция к системе user_id завершена успешно');
+        console.log(`✅ Миграция к системе user_id завершена успешно`);
     } catch (error) {
-        console.error('❌ Ошибка миграции к системе user_id:', error);
+        console.error(`❌ Ошибка миграции к системе user_id:`, error);
         // Не останавливаем сервер, продолжаем работу
     }
 }
@@ -667,7 +667,7 @@ async function createSession(ip, userId) {
         console.log(`🔐 Создана сессия для user_id ${userId} (IP: ${ip}), истекает: ${expiresAt.toLocaleString('ru-RU')}`);
         return sessionToken;
     } catch (error) {
-        console.error('❌ Ошибка создания сессии:', error);
+        console.error(`❌ Ошибка создания сессии:`, error);
         return null;
     }
 }
@@ -702,7 +702,7 @@ async function checkSession(ip) {
             avatar: session.avatar_url
         };
     } catch (error) {
-        console.error('❌ Ошибка проверки сессии:', error);
+        console.error(`❌ Ошибка проверки сессии:`, error);
         return null;
     }
 }
@@ -715,7 +715,7 @@ async function removeSession(ip) {
             console.log(`🗑️ Удаляем сессию для user_id ${result.rows[0].user_id} (IP: ${ip})`);
         }
     } catch (error) {
-        console.error('❌ Ошибка удаления сессии:', error);
+        console.error(`❌ Ошибка удаления сессии:`, error);
     }
 }
 
@@ -740,7 +740,7 @@ async function getChatEncryptionKey(chatId) {
         console.log(`⚠️ Ключ шифрования не найден для чата: ${chatId}`);
         return null;
     } catch (error) {
-        console.error('❌ Ошибка получения ключа шифрования чата:', error);
+        console.error(`❌ Ошибка получения ключа шифрования чата:`, error);
         return null;
     }
 }
@@ -817,10 +817,10 @@ async function getUserStatus(userId) {
     try {
         const userResult = await pool.query('SELECT username FROM users WHERE user_id = $1', [userId]);
         if (userResult.rows.length > 0 && userResult.rows[0].username === BOT_CONFIG.username) {
-            return { isOnline: true, lastSeenText: 'В сети' };
+            return { isOnline: true, lastSeenText: 'Избранное' };
         }
     } catch (error) {
-        console.error('❌ Ошибка проверки бота:', error);
+        console.error(`❌ Ошибка проверки бота:`, error);
     }
 
     const isOnline = isUserOnline(userId);
@@ -834,7 +834,7 @@ async function getUserStatus(userId) {
         const lastSeenText = formatLastSeen(lastSeen);
         return { isOnline: false, lastSeenText };
     } catch (error) {
-        console.error('❌ Ошибка получения статуса пользователя:', error);
+        console.error(`❌ Ошибка получения статуса пользователя:`, error);
         return { isOnline: false, lastSeenText: 'Давно не был(а) в сети' };
     }
 }
@@ -897,7 +897,7 @@ app.get('/stats', async (req, res) => {
             memory: process.memoryUsage()
         });
     } catch (error) {
-        console.error('❌ Ошибка получения статистики:', error);
+        console.error(`❌ Ошибка получения статистики:`, error);
         res.status(500).json({ error: 'Ошибка сервера' });
     }
 });
@@ -971,7 +971,7 @@ app.post('/upload-avatar', upload.single('avatar'), async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Ошибка загрузки аватарки:', error);
+        console.error(`❌ Ошибка загрузки аватарки:`, error);
         res.json({ success: false, message: 'Внутренняя ошибка сервера' });
     }
 });
@@ -1011,7 +1011,7 @@ app.post('/logout', async (req, res) => {
             });
         }
     } catch (error) {
-        console.error('❌ Ошибка выхода пользователя:', error);
+        console.error(`❌ Ошибка выхода пользователя:`, error);
     }
 
     res.json({ success: true });
@@ -1058,7 +1058,7 @@ app.post('/change-password', async (req, res) => {
         console.log(`🔐 Пароль изменен для пользователя: user_id ${userId} (IP: ${clientIP})`);
         res.json({ success: true, message: 'Пароль успешно изменен' });
     } catch (error) {
-        console.error('❌ Ошибка смены пароля:', error);
+        console.error(`❌ Ошибка смены пароля:`, error);
         res.json({ success: false, message: 'Внутренняя ошибка сервера' });
     }
 });
@@ -1121,7 +1121,7 @@ app.post('/register', async (req, res) => {
                 console.warn(`⚠️ Файл user-icon.png не найден в корне проекта`);
             }
         } catch (avatarError) {
-            console.error('❌ Ошибка при загрузке дефолтной аватарки:', avatarError);
+            console.error(`❌ Ошибка при загрузке дефолтной аватарки:`, avatarError);
         }
 
         // Регистрируем пользователя с дефолтной аватаркой
@@ -1143,12 +1143,12 @@ app.post('/register', async (req, res) => {
                 console.log(`🤖 Приветственное сообщение отправлено новому пользователю: ${username}`);
             }
         } catch (welcomeError) {
-            console.error('❌ Ошибка отправки приветственного сообщения:', welcomeError);
+            console.error(`❌ Ошибка отправки приветственного сообщения:`, welcomeError);
         }
 
         res.json({ success: true });
     } catch (error) {
-        console.error('❌ Ошибка регистрации:', error);
+        console.error(`❌ Ошибка регистрации:`, error);
         res.json({ success: false, message: 'Внутренняя ошибка сервера' });
     }
 });
@@ -1192,7 +1192,7 @@ app.post('/login', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('❌ Ошибка входа:', error);
+        console.error(`❌ Ошибка входа:`, error);
         res.json({ success: false, message: 'Внутренняя ошибка сервера' });
     }
 });
@@ -1228,7 +1228,7 @@ app.post('/search-users', async (req, res) => {
 
         res.json(results);
     } catch (error) {
-        console.error('❌ Ошибка поиска пользователей:', error);
+        console.error(`❌ Ошибка поиска пользователей:`, error);
         res.json([]);
     }
 });
@@ -1258,7 +1258,7 @@ app.post('/users-status', async (req, res) => {
 
         res.json({ success: true, users: results });
     } catch (error) {
-        console.error('❌ Ошибка получения статусов пользователей:', error);
+        console.error(`❌ Ошибка получения статусов пользователей:`, error);
         res.json({ success: false, message: 'Внутренняя ошибка сервера' });
     }
 });
@@ -1289,7 +1289,7 @@ app.get('/bot-info', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('❌ Ошибка получения информации о боте:', error);
+        console.error(`❌ Ошибка получения информации о боте:`, error);
         res.json({ success: false, message: 'Внутренняя ошибка сервера' });
     }
 });
@@ -1327,7 +1327,7 @@ app.post('/update-bot', async (req, res) => {
         console.log(`🤖 Настройки бота обновлены администратором: user_id ${userId}`);
         res.json({ success: true, message: 'Настройки бота обновлены' });
     } catch (error) {
-        console.error('❌ Ошибка обновления настроек бота:', error);
+        console.error(`❌ Ошибка обновления настроек бота:`, error);
         res.json({ success: false, message: 'Внутренняя ошибка сервера' });
     }
 });
@@ -1455,7 +1455,7 @@ app.get('/profile/:identifier', async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('❌ Ошибка получения профиля:', error);
+        console.error(`❌ Ошибка получения профиля:`, error);
         res.json({ success: false, message: 'Внутренняя ошибка сервера' });
     }
 });
@@ -1606,7 +1606,7 @@ async function ensureChatExists(userId1, userId2) {
                     console.log(`✅ ID чата обновлен: ${existingChat.chat_id} -> ${chatId} с ключом шифрования`);
                 } catch (error) {
                     await pool.query('ROLLBACK');
-                    console.error('❌ Ошибка обновления ID чата:', error);
+                    console.error(`❌ Ошибка обновления ID чата:`, error);
                 }
             } else {
                 // Чат уже существует с правильным ID, кешируем ключ
@@ -1632,7 +1632,7 @@ async function ensureChatExists(userId1, userId2) {
 
         return chatId;
     } catch (error) {
-        console.error('❌ Ошибка создания/проверки чата:', error);
+        console.error(`❌ Ошибка создания/проверки чата:`, error);
         return chatId;
     }
 }
@@ -2035,7 +2035,7 @@ io.on('connection', (socket) => {
                }
            }
        } catch (error) {
-           console.error('❌ Ошибка отправки зашифрованного сообщения:', error);
+           console.error(`❌ Ошибка отправки зашифрованного сообщения:`, error);
            socket.emit('message-error', { error: 'Не удалось отправить сообщение' });
        }
    });
@@ -2095,18 +2095,18 @@ process.on('SIGTERM', async () => {
        try {
            await pool.query('UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE user_id = $1', [userData.userId]);
        } catch (error) {
-           console.error('❌ Ошибка обновления last_seen при shutdown:', error);
+           console.error(`❌ Ошибка обновления last_seen при shutdown:`, error);
        }
    }
 
    io.close(() => {
-       console.log('✅ Сокет сервер закрыт');
+       console.log(`✅ Сокет сервер закрыт`);
 
        server.close(() => {
-           console.log('✅ HTTP сервер закрыт');
+           console.log(`✅ HTTP сервер закрыт`);
 
            pool.end(() => {
-               console.log('✅ Подключение к базе-данных закрыто');
+               console.log(`✅ Подключение к базе-данных закрыто`);
                process.exit(0);
            });
        });
@@ -2114,18 +2114,18 @@ process.on('SIGTERM', async () => {
 });
 
 process.on('SIGINT', async () => {
-   console.log('🛑 Получен сигнал SIGINT (Ctrl+C)');
+   console.log(`🛑 Получен сигнал SIGINT (Ctrl+C)`);
    process.emit('SIGTERM');
 });
 
 // Обработка ошибок без завершения процесса
 process.on('uncaughtException', (error) => {
-   console.error('❌ Необработанное исключение:', error);
+   console.error(`❌ Необработанное исключение:`, error);
    // НЕ завершаем процесс для устойчивости
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-   console.error('❌ Необработанное отклонение промиса:', reason);
+   console.error(`❌ Необработанное отклонение промиса:`, reason);
    // НЕ завершаем процесс для устойчивости
 });
 
