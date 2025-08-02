@@ -11,7 +11,7 @@
     <!-- Экран авторизации -->
     <div class="auth-screen" id="authScreen">
         <div class="auth-form">
-            <h2 id="authTitle">Вход в систему</h2>
+            <h2 id="authTitle">Вход</h2>
             <div class="error" id="authError" style="display: none;"></div>
             <input type="text" id="username" placeholder="Имя пользователя" autocomplete="username">
             <input type="text" id="displayName" placeholder="Отображаемое имя" style="display: none;">
@@ -29,8 +29,8 @@
                 <div class="sidebar-header">
                     <h3 id="currentUser">Чаты</h3>
                     <div class="header-buttons">
-                        <button class="profile-btn" id="settingsBtn" title="Настройки">⚙️</button>
-                        <button class="profile-btn" id="profileBtn" title="Профиль">👤</button>
+                        <button class="profile-btn" id="settingsBtn" title="Настройки">Настройки</button>
+                        <button class="profile-btn" id="profileBtn" title="Профиль">Профиль</button>
                     </div>
                 </div>
                 <div class="search-container">
@@ -53,7 +53,11 @@
                             <span class="chat-title" id="chatTitle">Чат</span>
                         </div>
                     </div>
-                    <button class="profile-btn" id="chatProfileBtn">Профиль</button>
+                    <!-- Группируем кнопки в правой части -->
+                    <div class="chat-header-right">
+                        <button class="profile-btn" id="chatCallBtn">Позвонить</button>
+                        <button class="profile-btn" id="chatProfileBtn">Профиль</button>
+                    </div>
                 </div>
                 <div class="chat-messages" id="chatMessages">
                     <div class="no-chat">Выберите чат для начала общения!</div>
@@ -96,6 +100,7 @@
                     <div class="settings-bottom">
                         <button class="logout-btn" id="logoutBtn">Выйти</button>
                         <div class="settings-credits">
+                            <div class="credits-title">Chatty (Web-Application)</div>
                             <div class="credits-title">Сделано с любовью</div>
                             <div class="credits-names">Woolsane & sxmeblessed</div>
                         </div>
@@ -131,20 +136,11 @@
                 <!-- Аватарка -->
                 <div class="form-group avatar-group">
                     <div class="avatar-upload-container">
-                        <div class="avatar-preview-wrapper">
-                            <img class="avatar-preview" id="avatarPreview" src="" alt="Аватар">
-                            <div class="avatar-animation-indicator" id="avatarAnimationIndicator" style="display: none;">
-                                <span>🎬</span>
-                            </div>
-                        </div>
+                        <img class="avatar-preview" id="avatarPreview" src="" alt="Аватар">
                         <div class="avatar-overlay" id="avatarOverlay">
-                            <span>Изменить фото</span>
+                            <span>Изменить аватар</span>
                         </div>
-                        <input type="file" id="avatarInput" accept="image/*,image/gif,image/webp" style="display: none;">
-                    </div>
-                    <div class="avatar-info">
-                        <small>Поддерживаются статические и анимированные изображения (GIF, WebP)</small>
-                        <small>Максимальный размер: 5 МБ</small>
+                        <input type="file" id="avatarInput" accept="image/*" style="display: none;">
                     </div>
                 </div>
 
